@@ -1,0 +1,251 @@
+<!doctype html>
+<!--
+  Trang chính của game: canvas, HUD, nút cảm ứng, bảng chế tạo và các màn menu (dạng DOM).
+  Logic nằm trong js/main.js (ES module), giao diện trong css/style.css.
+  Cần chạy qua server cục bộ (Live Server / npx serve) vì ES modules không chạy với file://.
+-->
+<html lang="vi">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#c6ebd0" />
+    <title>Đảo Zombie Ngố</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;800;900&display=swap"
+    />
+    <link rel="stylesheet" href="css/style.css" />
+    <script type="module" src="js/main.js"></script>
+  </head>
+  <body>
+    <canvas id="game-canvas" aria-label="Màn chơi"></canvas>
+
+    <!-- ===== HUD khi đang chơi ===== -->
+    <div id="hud" class="hud" hidden>
+      <div class="hud-top-left">
+        <canvas id="minimap" class="minimap" aria-label="Bản đồ nhỏ"></canvas>
+        <div class="status-bars">
+          <div class="stat stat--health" title="Máu">
+            <span class="stat-icon" aria-hidden="true"></span>
+            <div class="stat-track" role="presentation"><div id="bar-health" class="stat-fill"></div></div>
+          </div>
+          <div class="stat stat--hunger" title="No bụng">
+            <span class="stat-icon" aria-hidden="true"></span>
+            <div class="stat-track" role="presentation"><div id="bar-hunger" class="stat-fill"></div></div>
+          </div>
+          <div class="stat stat--stamina" title="Thể lực">
+            <span class="stat-icon" aria-hidden="true"></span>
+            <div class="stat-track" role="presentation"><div id="bar-stamina" class="stat-fill"></div></div>
+          </div>
+          <span id="status-temperature" class="status-chip" hidden></span>
+        </div>
+      </div>
+
+      <div id="clock" class="clock" aria-live="polite">
+        <span class="clock-icon" aria-hidden="true"></span>
+        <span id="clock-label">Ngày 1</span>
+        <span class="clock-track" aria-hidden="true"><span id="clock-fill" class="clock-fill"></span></span>
+      </div>
+
+      <button class="round-button pause-button" type="button" data-menu="pause" aria-label="Tạm dừng">
+        <span class="pause-icon" aria-hidden="true"></span>
+      </button>
+      <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+      <div class="hud-bottom">
+        <div class="hud-pills">
+          <span id="prompt" class="pill" hidden></span>
+          <span id="ammo" class="pill pill--ammo" hidden></span>
+        </div>
+        <div id="hotbar" class="hotbar" role="toolbar" aria-label="Thanh nhanh"></div>
+      </div>
+      <div id="hurt-vignette" class="hurt-vignette" aria-hidden="true"></div>
+    </div>
+
+    <!-- ===== Điều khiển cảm ứng ===== -->
+    <div id="touch-controls" class="touch-controls" hidden>
+      <div class="joystick-zone joystick-zone--move" data-stick="move">
+        <div class="joystick-base"><div class="joystick-knob"></div></div>
+      </div>
+      <div class="joystick-zone joystick-zone--aim" data-stick="aim">
+        <div class="joystick-base joystick-base--aim"><div class="joystick-knob"></div></div>
+      </div>
+      <div class="touch-buttons">
+        <button class="touch-button touch-button--interact" type="button" data-game-action="interact">Dùng</button>
+        <button class="touch-button" type="button" data-game-action="reload">Nạp</button>
+        <button class="touch-button" type="button" data-game-action="build">Xây</button>
+        <button class="touch-button" type="button" data-game-action="craft">Chế tạo</button>
+      </div>
+    </div>
+
+    <!-- ===== Bảng túi đồ & chế tạo ===== -->
+    <div id="craft-panel" class="panel-layer" hidden>
+      <section class="panel-card" role="dialog" aria-modal="true" aria-labelledby="craft-title">
+        <header class="panel-header">
+          <h2 id="craft-title" class="screen-title">Túi đồ &amp; Chế tạo</h2>
+          <button class="round-button" type="button" data-panel="close" aria-label="Đóng">✕</button>
+        </header>
+        <div class="panel-body">
+          <div class="panel-column">
+            <h3 class="panel-subtitle">Chế tạo</h3>
+            <ul id="recipe-list" class="recipe-list"></ul>
+          </div>
+          <div class="panel-column">
+            <h3 class="panel-subtitle">Túi đồ</h3>
+            <div id="inventory-grid" class="inventory-grid"></div>
+            <p id="inventory-selected" class="muted-text panel-hint"></p>
+            <button id="drop-button" class="menu-button menu-button--small" type="button" disabled>Vứt ra đất</button>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- ===== Các màn menu ===== -->
+    <div id="menu-layer" class="menu-layer">
+      <!-- Menu chính -->
+      <section class="menu-screen" data-screen="mainMenu" aria-labelledby="title-main">
+        <div class="menu-card">
+          <div class="logo-blob" aria-hidden="true"><span class="logo-eye"></span><span class="logo-eye"></span></div>
+          <h1 id="title-main" class="game-title">Đảo Zombie Ngố</h1>
+          <p class="subtitle">Ban ngày gom đồ, ban đêm giữ nhà!</p>
+          <div class="button-stack">
+            <button class="menu-button menu-button--primary" type="button" data-menu="newGame">Chơi mới</button>
+            <button id="continue-button" class="menu-button" type="button" data-menu="continue" hidden>Tiếp tục</button>
+            <button class="menu-button" type="button" data-menu="howToPlay">Cách chơi</button>
+            <button class="menu-button" type="button" data-menu="settings">Cài đặt</button>
+          </div>
+          <p id="best-nights-label" class="muted-text">Kỷ lục: 0 đêm</p>
+        </div>
+      </section>
+
+      <!-- Tạo game mới: hiện và cho nhập seed -->
+      <section class="menu-screen" data-screen="newGame" aria-labelledby="title-new" hidden>
+        <form id="new-game-form" class="menu-card">
+          <h2 id="title-new" class="screen-title">Hòn đảo mới</h2>
+          <p class="muted-text">Cùng một seed sẽ luôn tạo ra cùng một hòn đảo.</p>
+          <label class="field-label" for="seed-input">Seed</label>
+          <div class="seed-row">
+            <input
+              id="seed-input"
+              class="text-input"
+              type="text"
+              inputmode="text"
+              autocomplete="off"
+              spellcheck="false"
+              maxlength="24"
+            />
+            <button class="round-button" type="button" data-menu="randomSeed" aria-label="Seed ngẫu nhiên">
+              <span aria-hidden="true">⟳</span>
+            </button>
+          </div>
+          <div class="button-stack">
+            <button class="menu-button menu-button--primary" type="submit" data-autofocus>Bắt đầu</button>
+            <button class="menu-button" type="button" data-menu="mainMenu">Quay lại</button>
+          </div>
+        </form>
+      </section>
+
+      <!-- Cách chơi -->
+      <section class="menu-screen" data-screen="howToPlay" aria-labelledby="title-help" hidden>
+        <div class="menu-card menu-card--wide">
+          <h2 id="title-help" class="screen-title">Cách chơi</h2>
+          <div class="help-content">
+            <p>
+              Ban ngày chặt cây, đập đá, hái quả và săn thú. Mở <b>Chế tạo</b> để làm rìu, súng, tường, đống lửa…
+              Ban đêm zombie kéo đến — xây nhà, đặt bẫy, giữ lửa và cầm cự tới sáng. Mỗi đêm sống sót được 1 điểm!
+            </p>
+            <h3>Máy tính</h3>
+            <ul class="key-list">
+              <li><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> Di chuyển · <kbd>Shift</kbd> Chạy</li>
+              <li><kbd>Chuột trái</kbd> Vung rìu / bắn / đặt công trình (tuỳ món đang cầm)</li>
+              <li><kbd>E</kbd> Tương tác: chặt cây, hái quả, nướng thịt, sửa, ngủ</li>
+              <li><kbd>Q</kbd> Túi đồ &amp; chế tạo · <kbd>B</kbd> Chọn công trình để xây</li>
+              <li><kbd>R</kbd> Nạp đạn · <kbd>1</kbd>–<kbd>9</kbd> hoặc lăn chuột: chọn ô nhanh</li>
+              <li><kbd>Esc</kbd> hoặc <kbd>P</kbd> Tạm dừng</li>
+            </ul>
+            <h3>Điện thoại</h3>
+            <ul class="key-list">
+              <li>Kéo ở nửa trái để đi, đẩy hết cỡ để chạy</li>
+              <li>Kéo ở nửa phải để ngắm; kéo xa để vung rìu / bắn</li>
+              <li>Nút <b>Dùng</b> (tương tác / đặt), <b>Nạp</b>, <b>Xây</b>, <b>Chế tạo</b>; chạm ô dưới cùng để đổi đồ</li>
+            </ul>
+            <h3>Mẹo sinh tồn</h3>
+            <ul class="key-list">
+              <li>Đói thì mất máu dần. Thịt nướng ở đống lửa hồi nhiều hơn thịt sống.</li>
+              <li>Ban đêm ở xa đống lửa sẽ lạnh và đói nhanh hơn; ngồi cạnh lửa thì hồi máu.</li>
+              <li>Zombie đi vòng qua tường, nhưng nếu bị rào kín chúng sẽ đập chỗ yếu nhất. Dùng gỗ để sửa!</li>
+              <li>Giường: đặt điểm hồi sinh (cứu bạn một lần) và ngủ cho đêm trôi nhanh.</li>
+            </ul>
+          </div>
+          <button class="menu-button" type="button" data-menu="back">Quay lại</button>
+        </div>
+      </section>
+
+      <!-- Cài đặt -->
+      <section class="menu-screen" data-screen="settings" aria-labelledby="title-settings" hidden>
+        <form id="settings-form" class="menu-card" onsubmit="return false">
+          <h2 id="title-settings" class="screen-title">Cài đặt</h2>
+          <label class="setting-row">
+            <span>Âm thanh</span>
+            <input id="setting-sound" class="switch" type="checkbox" />
+          </label>
+          <label class="setting-row">
+            <span>Rung màn hình</span>
+            <input id="setting-shake" class="switch" type="checkbox" />
+          </label>
+          <fieldset class="setting-group">
+            <legend>Cỡ nút cảm ứng</legend>
+            <div class="segmented">
+              <label><input type="radio" name="touch-size" value="small" /><span>Nhỏ</span></label>
+              <label><input type="radio" name="touch-size" value="medium" /><span>Vừa</span></label>
+              <label><input type="radio" name="touch-size" value="large" /><span>Lớn</span></label>
+            </div>
+          </fieldset>
+          <button class="menu-button" type="button" data-menu="back">Quay lại</button>
+        </form>
+      </section>
+
+      <!-- Tạm dừng -->
+      <section class="menu-screen" data-screen="paused" aria-labelledby="title-paused" hidden>
+        <div class="menu-card">
+          <h2 id="title-paused" class="screen-title">Tạm nghỉ chút</h2>
+          <p id="pause-seed" class="muted-text"></p>
+          <div class="button-stack">
+            <button class="menu-button menu-button--primary" type="button" data-menu="resume">Chơi tiếp</button>
+            <button class="menu-button" type="button" data-menu="howToPlay">Cách chơi</button>
+            <button class="menu-button" type="button" data-menu="settings">Cài đặt</button>
+            <button class="menu-button" type="button" data-menu="quitToMenu">Lưu &amp; về menu</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Game over -->
+      <section class="menu-screen" data-screen="gameOver" aria-labelledby="title-over" hidden>
+        <div class="menu-card">
+          <h2 id="title-over" class="screen-title">Ôi, bị tóm rồi!</h2>
+          <div class="result-row">
+            <div class="result-box">
+              <span class="result-number" id="result-nights">0</span>
+              <span class="muted-text">đêm sống sót</span>
+            </div>
+            <div class="result-box">
+              <span class="result-number" id="result-best">0</span>
+              <span class="muted-text">kỷ lục</span>
+            </div>
+          </div>
+          <p id="result-kills" class="muted-text"></p>
+          <div class="button-stack">
+            <button class="menu-button menu-button--primary" type="button" data-menu="playAgain">Chơi lại đảo này</button>
+            <button class="menu-button" type="button" data-menu="quitToMenu">Về menu</button>
+          </div>
+        </div>
+      </section>
+    </div>
+  </body>
+</html>

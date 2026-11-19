@@ -1,0 +1,1119 @@
+/*
+  Giao diện ngoài canvas: menu, HUD, thanh nhanh, bảng chế tạo, nút cảm ứng. Phong cách pastel, bo tròn, dịu mắt.
+  Hỗ trợ chế độ sáng/tối của hệ thống (menu & bảng), prefers-reduced-motion và safe-area của điện thoại.
+  Biến --touch-scale và --stick-radius được ui/touchControls.js đặt theo Cài đặt.
+*/
+
+/* ========== Biến màu & kích thước ========== */
+:root {
+  --font-main: 'Nunito', ui-rounded, 'SF Pro Rounded', 'Segoe UI', system-ui, -apple-system, Roboto, sans-serif;
+
+  --backdrop: rgba(214, 238, 222, 0.62);
+  --card-bg: #fffaf2;
+  --card-border: #f0e4d2;
+  --text: #4a4058;
+  --text-muted: #857a96;
+  --button-bg: #ffffff;
+  --button-border: #ece1d1;
+  --button-text: #4a4058;
+  --primary-bg: #9adbb0;
+  --primary-border: #7cc699;
+  --primary-text: #234a37;
+  --input-bg: #ffffff;
+  --focus-ring: #8cc4f0;
+  --switch-off: #e6dccd;
+  --switch-on: #9adbb0;
+  --kbd-bg: #f3ecf9;
+  --missing-bg: #ffe3e6;
+  --missing-text: #c4505a;
+  --zombie-green: #b8e3a6;
+  --zombie-outline: #8fc77c;
+
+  /* HUD luôn dùng màu sáng vì nằm trên nền cỏ */
+  --hud-bg: rgba(255, 250, 242, 0.92);
+  --hud-border: #ece1d1;
+  --hud-text: #4a4058;
+  --health: #ff9a8b;
+  --hunger: #ffc98a;
+  --stamina: #9ad8f0;
+
+  --shadow-soft: 0 5px 0 rgba(74, 64, 88, 0.1), 0 10px 22px rgba(74, 64, 88, 0.1);
+  --shadow-pressed: 0 2px 0 rgba(74, 64, 88, 0.12);
+  --radius-card: 28px;
+  --radius-pill: 999px;
+
+  /* Vùng an toàn (tai thỏ, thanh home của điện thoại) */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+
+  /* Điều khiển cảm ứng (JS ghi đè theo Cài đặt) */
+  --touch-scale: 1;
+  --stick-radius: 56px;
+  --touch-button-size: calc(64px * var(--touch-scale));
+  --stick-margin: calc(28px * var(--touch-scale));
+  --hotbar-clearance: 92px; /* chừa chỗ cho thanh nhanh ở đáy màn hình dọc */
+
+  --minimap-size: 132px;
+  --slot-size: 54px;
+  --stat-width: clamp(84px, 16vw, 150px);
+}
+
+@media (max-width: 600px), (max-height: 500px) {
+  :root {
+    --minimap-size: 92px;
+    --slot-size: 50px;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --backdrop: rgba(40, 38, 58, 0.66);
+    --card-bg: #2f2c3d;
+    --card-border: #403b52;
+    --text: #f1eaf8;
+    --text-muted: #b4aac4;
+    --button-bg: #3a364b;
+    --button-border: #4a4560;
+    --button-text: #f1eaf8;
+    --primary-bg: #7cc699;
+    --primary-border: #62ad80;
+    --primary-text: #17321f;
+    --input-bg: #262333;
+    --switch-off: #4a4560;
+    --kbd-bg: #403b52;
+    --missing-bg: #5a3440;
+    --missing-text: #ffb3bc;
+  }
+}
+
+/* ========== Nền tảng ========== */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+  background: #c6ebd0;
+  font-family: var(--font-main);
+  color: var(--text);
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+#game-canvas {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none; /* chặn cuộn và zoom khi chạm vào màn chơi */
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  touch-action: manipulation;
+  cursor: pointer;
+}
+
+:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 3px;
+}
+
+/* ========== Nút dùng chung ========== */
+.menu-button {
+  min-height: 54px;
+  width: 100%;
+  padding: 12px 24px;
+  border: 2px solid var(--button-border);
+  border-radius: var(--radius-pill);
+  background: var(--button-bg);
+  color: var(--button-text);
+  font-size: 1.1rem;
+  font-weight: 800;
+  box-shadow: var(--shadow-soft);
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.menu-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.menu-button:active:not(:disabled) {
+  transform: translateY(3px);
+  box-shadow: var(--shadow-pressed);
+}
+
+.menu-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.menu-button--primary {
+  background: var(--primary-bg);
+  border-color: var(--primary-border);
+  color: var(--primary-text);
+}
+
+.menu-button--small {
+  min-height: 48px;
+  font-size: 1rem;
+  margin-top: 4px;
+}
+
+.round-button {
+  width: 52px;
+  height: 52px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border: 2px solid var(--button-border);
+  border-radius: 50%;
+  background: var(--button-bg);
+  color: var(--button-text);
+  font-size: 1.3rem;
+  font-weight: 800;
+  box-shadow: var(--shadow-soft);
+}
+
+.round-button:active {
+  transform: translateY(3px);
+  box-shadow: var(--shadow-pressed);
+}
+
+/* ========== Lớp menu ========== */
+.menu-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(16px + var(--safe-top)) calc(16px + var(--safe-right)) calc(16px + var(--safe-bottom))
+    calc(16px + var(--safe-left));
+  background: var(--backdrop);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+}
+
+.menu-screen {
+  width: 100%;
+  max-height: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+.menu-card {
+  width: min(100%, 380px);
+  max-height: calc(100dvh - 32px - var(--safe-top) - var(--safe-bottom));
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 26px 22px;
+  border: 2px solid var(--card-border);
+  border-radius: var(--radius-card);
+  background: var(--card-bg);
+  box-shadow: var(--shadow-soft);
+  text-align: center;
+  animation: card-pop 0.25s ease-out;
+}
+
+.menu-card--wide {
+  width: min(100%, 560px);
+}
+
+@keyframes card-pop {
+  from {
+    transform: scale(0.94);
+    opacity: 0;
+  }
+}
+
+.game-title {
+  margin: 0;
+  font-size: clamp(1.8rem, 7vw, 2.4rem);
+  font-weight: 900;
+  line-height: 1.1;
+}
+
+.screen-title {
+  margin: 0;
+  font-size: 1.6rem;
+  font-weight: 900;
+}
+
+.subtitle {
+  margin: -6px 0 4px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.muted-text {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+}
+
+.button-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Đầu zombie ngố trên logo */
+.logo-blob {
+  position: relative;
+  width: 76px;
+  height: 76px;
+  margin: 0 auto;
+  border-radius: 50%;
+  background: var(--zombie-green);
+  border: 5px solid var(--zombie-outline);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  animation: blob-bob 2.4s ease-in-out infinite;
+}
+
+.logo-eye {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: #4a4058;
+  box-shadow: inset 3px 3px 0 -1px #ffffff;
+}
+
+.logo-eye:last-child {
+  width: 10px;
+  height: 10px;
+  margin-top: 4px; /* mắt lệch nhau cho ngố */
+}
+
+@keyframes blob-bob {
+  50% {
+    transform: translateY(-5px) rotate(-4deg);
+  }
+}
+
+/* Màn nhập seed */
+.field-label {
+  text-align: left;
+  font-weight: 800;
+}
+
+.seed-row {
+  display: flex;
+  gap: 10px;
+  margin-top: -6px;
+}
+
+.text-input {
+  flex: 1;
+  min-width: 0;
+  min-height: 52px;
+  padding: 0 18px;
+  border: 2px solid var(--button-border);
+  border-radius: var(--radius-pill);
+  background: var(--input-bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* Cách chơi */
+.help-content {
+  text-align: left;
+}
+
+.help-content h3 {
+  margin: 14px 0 6px;
+  font-size: 1.1rem;
+}
+
+.help-content p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.key-list {
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  line-height: 1.5;
+}
+
+kbd {
+  display: inline-block;
+  min-width: 28px;
+  margin-right: 4px;
+  padding: 2px 8px;
+  border-radius: 8px;
+  background: var(--kbd-bg);
+  font-family: inherit;
+  font-weight: 800;
+  text-align: center;
+}
+
+/* Cài đặt */
+.setting-row {
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.switch {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  flex: none;
+  width: 58px;
+  height: 34px;
+  margin: 0;
+  border-radius: var(--radius-pill);
+  background: var(--switch-off);
+  cursor: pointer;
+  transition: background 0.18s ease;
+}
+
+.switch::before {
+  content: '';
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 2px 4px rgba(74, 64, 88, 0.2);
+  transition: transform 0.18s ease;
+}
+
+.switch:checked {
+  background: var(--switch-on);
+}
+
+.switch:checked::before {
+  transform: translateX(24px);
+}
+
+.setting-group {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  text-align: left;
+}
+
+.setting-group legend {
+  margin-bottom: 8px;
+  font-weight: 800;
+}
+
+.segmented {
+  display: flex;
+  gap: 6px;
+  padding: 5px;
+  border-radius: var(--radius-pill);
+  background: var(--switch-off);
+}
+
+.segmented label {
+  flex: 1;
+  cursor: pointer;
+}
+
+.segmented input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.segmented span {
+  min-height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-pill);
+  font-weight: 800;
+}
+
+.segmented input:checked + span {
+  background: var(--button-bg);
+  box-shadow: var(--shadow-pressed);
+}
+
+.segmented input:focus-visible + span {
+  outline: 3px solid var(--focus-ring);
+}
+
+/* Game over */
+.result-row {
+  display: flex;
+  gap: 12px;
+}
+
+.result-box {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+  border-radius: 20px;
+  background: var(--kbd-bg);
+}
+
+.result-number {
+  font-size: 2.4rem;
+  font-weight: 900;
+  line-height: 1.1;
+}
+
+/* ========== HUD ========== */
+.hud {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  pointer-events: none; /* chỉ các nút bên trong mới nhận chạm */
+  color: var(--hud-text);
+}
+
+.hud button {
+  pointer-events: auto;
+}
+
+.hud-top-left {
+  position: absolute;
+  top: calc(12px + var(--safe-top));
+  left: calc(12px + var(--safe-left));
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.minimap {
+  width: var(--minimap-size);
+  height: var(--minimap-size);
+  border: 3px solid rgba(255, 250, 242, 0.95);
+  border-radius: 18px;
+  background: #acd8ef;
+  box-shadow: var(--shadow-soft);
+}
+
+.status-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: 18px;
+  background: var(--hud-bg);
+  box-shadow: var(--shadow-soft);
+}
+
+.stat {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.stat-icon {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  border-radius: 50%;
+  box-shadow: inset -2px -2px 0 rgba(0, 0, 0, 0.08);
+}
+
+.stat--health .stat-icon,
+.stat--health .stat-fill {
+  background: var(--health);
+}
+
+.stat--hunger .stat-icon,
+.stat--hunger .stat-fill {
+  background: var(--hunger);
+}
+
+.stat--stamina .stat-icon,
+.stat--stamina .stat-fill {
+  background: var(--stamina);
+}
+
+.stat-track {
+  width: var(--stat-width);
+  height: 11px;
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  background: rgba(74, 64, 88, 0.12);
+}
+
+.stat-fill {
+  height: 100%;
+  width: 100%;
+  border-radius: var(--radius-pill);
+  transition: width 0.2s ease;
+}
+
+.stat-track.is-low {
+  animation: low-pulse 0.9s ease-in-out infinite;
+}
+
+@keyframes low-pulse {
+  50% {
+    background: rgba(255, 120, 120, 0.35);
+  }
+}
+
+.status-chip {
+  align-self: flex-start;
+  padding: 1px 9px;
+  border-radius: var(--radius-pill);
+  background: #ffe2c4;
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.status-chip.is-cold {
+  background: #d9ecff;
+}
+
+.clock {
+  position: absolute;
+  top: calc(14px + var(--safe-top));
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  border-radius: var(--radius-pill);
+  background: var(--hud-bg);
+  box-shadow: var(--shadow-soft);
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.clock-icon {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #ffd58a;
+  box-shadow: 0 0 0 3px rgba(255, 213, 138, 0.35);
+}
+
+.clock.is-night .clock-icon {
+  background: transparent;
+  box-shadow: inset -6px 1px 0 0 #b9a8ec; /* mặt trăng khuyết */
+}
+
+.clock-track {
+  width: 54px;
+  height: 6px;
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  background: rgba(74, 64, 88, 0.12);
+}
+
+.clock-fill {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: var(--radius-pill);
+  background: #ffd58a;
+}
+
+.clock.is-night .clock-fill {
+  background: #b9a8ec;
+}
+
+.pause-button {
+  position: absolute;
+  top: calc(12px + var(--safe-top));
+  right: calc(12px + var(--safe-right));
+  background: var(--hud-bg);
+  border-color: var(--hud-border);
+  color: var(--hud-text);
+}
+
+.pause-icon {
+  width: 16px;
+  height: 18px;
+  border-left: 5px solid #4a4058;
+  border-right: 5px solid #4a4058;
+  border-radius: 2px;
+}
+
+.toast {
+  position: absolute;
+  top: calc(64px + var(--safe-top));
+  left: 50%;
+  max-width: min(520px, calc(100% - 32px));
+  padding: 10px 18px;
+  border-radius: 20px;
+  background: var(--hud-bg);
+  color: var(--hud-text);
+  font-weight: 800;
+  text-align: center;
+  box-shadow: var(--shadow-soft);
+  opacity: 0;
+  transform: translate(-50%, -8px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.toast.is-visible {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.hud-bottom {
+  position: absolute;
+  left: 50%;
+  bottom: calc(10px + var(--safe-bottom));
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100% - 16px);
+}
+
+.hud-pills {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+}
+
+.pill {
+  padding: 6px 14px;
+  border-radius: var(--radius-pill);
+  background: var(--hud-bg);
+  box-shadow: var(--shadow-soft);
+  font-size: 0.9rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.pill--ammo {
+  background: #fff1c9;
+}
+
+.hotbar {
+  display: flex;
+  gap: 6px;
+  padding: 6px;
+  border-radius: 22px;
+  background: rgba(255, 250, 242, 0.7);
+  box-shadow: var(--shadow-soft);
+}
+
+/* Ô vật phẩm — dùng chung cho thanh nhanh và túi đồ */
+.item-slot {
+  position: relative;
+  width: var(--slot-size);
+  height: var(--slot-size);
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 2px solid var(--hud-border);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--hud-text);
+  touch-action: none;
+}
+
+.item-slot .slot-icon {
+  width: 82%;
+  height: 82%;
+  pointer-events: none;
+}
+
+.slot-count {
+  position: absolute;
+  right: 5px;
+  bottom: 2px;
+  font-size: 0.8rem;
+  font-weight: 900;
+  text-shadow: 0 0 3px #ffffff, 0 0 3px #ffffff;
+  pointer-events: none;
+}
+
+.slot-key {
+  position: absolute;
+  top: 2px;
+  left: 6px;
+  font-size: 0.65rem;
+  font-weight: 800;
+  color: #a79bb8;
+  pointer-events: none;
+}
+
+body.is-touch .slot-key {
+  display: none;
+}
+
+.item-slot.is-selected {
+  border-color: #7cc699;
+  box-shadow: 0 0 0 3px rgba(124, 198, 153, 0.45);
+  transform: translateY(-2px);
+}
+
+/* Màn hẹp: chỉ hiện 6 ô thanh nhanh để mỗi ô đủ to cho ngón tay */
+@media (max-width: 600px), (max-height: 520px) {
+  .hotbar-slot:nth-child(n + 7) {
+    display: none;
+  }
+}
+
+.hurt-vignette {
+  position: absolute;
+  inset: 0;
+  box-shadow: inset 0 0 90px 30px rgba(255, 140, 150, 0.55);
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+
+.hurt-vignette.is-visible {
+  opacity: 1;
+  transition: none;
+}
+
+/* ========== Bảng túi đồ & chế tạo ========== */
+.panel-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 25;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(12px + var(--safe-top)) calc(12px + var(--safe-right)) calc(12px + var(--safe-bottom))
+    calc(12px + var(--safe-left));
+  background: var(--backdrop);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+}
+
+.panel-card {
+  width: min(100%, 880px);
+  max-height: calc(100dvh - 24px - var(--safe-top) - var(--safe-bottom));
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px;
+  border: 2px solid var(--card-border);
+  border-radius: var(--radius-card);
+  background: var(--card-bg);
+  box-shadow: var(--shadow-soft);
+  touch-action: pan-y;
+  animation: card-pop 0.2s ease-out;
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.panel-body {
+  display: grid;
+  grid-template-columns: 1.15fr 1fr;
+  gap: 18px;
+  align-items: start;
+}
+
+@media (max-width: 720px) {
+  .panel-body {
+    grid-template-columns: 1fr;
+  }
+}
+
+.panel-subtitle {
+  margin: 0 0 8px;
+  font-size: 1.05rem;
+  font-weight: 900;
+}
+
+.panel-hint {
+  margin: 8px 0 0;
+  font-size: 0.88rem;
+}
+
+.recipe-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.recipe-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 20px;
+  background: var(--kbd-bg);
+}
+
+.recipe-row.is-locked {
+  opacity: 0.7;
+}
+
+.recipe-icon {
+  width: 44px;
+  height: 44px;
+  flex: none;
+}
+
+.recipe-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.recipe-name {
+  font-weight: 800;
+}
+
+.recipe-cost {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.cost-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 8px 1px 3px;
+  border-radius: var(--radius-pill);
+  background: var(--button-bg);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.cost-chip img {
+  width: 20px;
+  height: 20px;
+}
+
+.cost-chip.is-missing {
+  background: var(--missing-bg);
+  color: var(--missing-text);
+}
+
+.craft-button {
+  min-width: 64px;
+  min-height: 48px;
+  padding: 0 16px;
+  border: 2px solid var(--primary-border);
+  border-radius: var(--radius-pill);
+  background: var(--primary-bg);
+  color: var(--primary-text);
+  font-weight: 900;
+  box-shadow: var(--shadow-pressed);
+}
+
+.craft-button:disabled {
+  border-color: var(--button-border);
+  background: var(--button-bg);
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+.inventory-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(48px, 1fr));
+  gap: 8px;
+}
+
+.inventory-slot {
+  width: auto;
+  height: auto;
+  aspect-ratio: 1;
+  background: var(--button-bg);
+  border-color: var(--button-border);
+  color: var(--button-text);
+}
+
+.inventory-slot.is-hotbar {
+  border-color: #b5e2c3;
+}
+
+.inventory-slot .slot-count {
+  text-shadow: none;
+}
+
+/* ========== Điều khiển cảm ứng ========== */
+.touch-controls {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  touch-action: none;
+}
+
+.joystick-zone {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 50%;
+  touch-action: none;
+}
+
+.joystick-zone--move {
+  left: 0;
+}
+
+.joystick-zone--aim {
+  right: 0;
+}
+
+/* Gốc cần: khi không chạm thì nằm ở góc dưới (trên thanh nhanh); khi chạm thì JS đặt left/top theo ngón tay. */
+.joystick-base {
+  position: absolute;
+  width: calc(var(--stick-radius) * 2);
+  height: calc(var(--stick-radius) * 2);
+  top: calc(100% - var(--safe-bottom) - var(--hotbar-clearance) - var(--stick-margin) - var(--stick-radius));
+  border-radius: 50%;
+  background: rgba(255, 250, 242, 0.28);
+  border: 3px solid rgba(255, 255, 255, 0.6);
+  transform: translate(-50%, -50%);
+  display: grid;
+  place-items: center;
+  opacity: 0.55;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+.joystick-zone--move .joystick-base {
+  left: calc(var(--safe-left) + var(--stick-margin) + var(--stick-radius));
+}
+
+.joystick-zone--aim .joystick-base {
+  left: calc(100% - var(--safe-right) - var(--stick-margin) - var(--stick-radius));
+}
+
+.joystick-base.is-active {
+  opacity: 1;
+  transition: none;
+}
+
+.joystick-base--aim {
+  border-color: rgba(255, 196, 176, 0.8);
+}
+
+.joystick-knob {
+  width: var(--stick-radius);
+  height: var(--stick-radius);
+  border-radius: 50%;
+  background: rgba(255, 250, 242, 0.92);
+  box-shadow: 0 4px 10px rgba(74, 64, 88, 0.18);
+}
+
+/* Các nút hành động: lưới 2x2 phía trên cần ngắm.
+   Chừa thêm nửa bán kính cần để núm ngắm kéo lên không chui ngay xuống dưới nút. */
+.touch-buttons {
+  position: absolute;
+  right: calc(var(--safe-right) + 16px);
+  bottom: calc(var(--safe-bottom) + var(--hotbar-clearance) + var(--stick-margin) + var(--stick-radius) * 2.5 + 8px);
+  display: grid;
+  grid-template-columns: repeat(2, var(--touch-button-size));
+  gap: calc(12px * var(--touch-scale));
+}
+
+.touch-button {
+  width: var(--touch-button-size);
+  height: var(--touch-button-size);
+  padding: 0;
+  border: 3px solid rgba(236, 225, 209, 0.95);
+  border-radius: 50%;
+  background: rgba(255, 250, 242, 0.85);
+  color: #4a4058;
+  font-size: calc(0.78rem * var(--touch-scale));
+  font-weight: 900;
+  line-height: 1.1;
+  box-shadow: var(--shadow-soft);
+  touch-action: none;
+}
+
+.touch-button--interact {
+  background: rgba(186, 230, 200, 0.92);
+  border-color: rgba(140, 205, 165, 0.95);
+}
+
+.touch-button.is-pressed {
+  transform: translateY(3px) scale(0.96);
+  box-shadow: var(--shadow-pressed);
+}
+
+/* Màn ngang thấp (điện thoại xoay ngang): thanh nhanh nằm giữa hai cần nên cần không phải né nó */
+@media (orientation: landscape) and (max-height: 520px) {
+  :root {
+    --hotbar-clearance: 0px;
+  }
+
+  .touch-buttons {
+    bottom: calc(var(--safe-bottom) + var(--stick-margin) + var(--stick-radius) * 2 + 16px);
+  }
+
+  .menu-card {
+    padding: 18px 20px;
+    gap: 10px;
+  }
+
+  .toast {
+    top: calc(56px + var(--safe-top));
+  }
+}
+
+/* Màn dọc hẹp: thanh trạng thái gọn lại */
+@media (max-width: 600px) and (orientation: portrait) {
+  .clock {
+    top: calc(12px + var(--safe-top) + var(--minimap-size) + 10px);
+    left: calc(12px + var(--safe-left));
+    transform: none;
+  }
+
+  .toast {
+    top: calc(var(--safe-top) + var(--minimap-size) + 64px);
+  }
+}
+
+/* ========== Tôn trọng người dùng muốn giảm chuyển động ========== */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
