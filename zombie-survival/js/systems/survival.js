@@ -6,6 +6,7 @@ import { SURVIVAL, ITEMS, STRUCTURES, PLAYER } from '../config.js';
 import { isNight } from './dayNight.js';
 import { takeFromSlot, getSlot } from './inventory.js';
 import { removeStructure } from './building.js';
+import { giveItemToPlayer } from '../entities/pickup.js';
 import { clamp } from '../utils/math.js';
 import { emit } from '../utils/events.js';
 
@@ -75,7 +76,9 @@ export function eatFromSlot(game, slotIndex) {
   const food = slot ? ITEMS[slot.itemId].food : null;
   if (!food || player.eatCooldown > 0) return false;
 
-  takeFromSlot(game.inventory, slotIndex, 1);
+  const { itemId } = takeFromSlot(game.inventory, slotIndex, 1);
+  const returnedItemId = ITEMS[itemId].returnsItem; // uống sữa xong còn lại cái xô
+  if (returnedItemId) giveItemToPlayer(game, returnedItemId, 1);
   player.eatCooldown = PLAYER.eatCooldownSeconds;
   player.hunger = clamp(player.hunger + food.hunger, 0, SURVIVAL.maxHunger);
   player.health = clamp(player.health + food.health, 0, SURVIVAL.maxHealth);

@@ -23,9 +23,11 @@ export const DISPLAY = {
 export const INPUT = {
   joystickRadius: 56, // bán kính vùng kéo cần điều khiển ảo (px, trước khi nhân tỉ lệ)
   joystickDeadZone: 0.15, // 0..1 — dưới ngưỡng này coi như không kéo
-  aimFireThreshold: 0.55, // 0..1 — kéo cần ngắm quá ngưỡng này thì tự bắn / vung rìu
   touchSprintThreshold: 0.92, // 0..1 — đẩy cần di chuyển gần hết cỡ thì chạy nhanh
   minAimDistance: 4, // chuột gần nhân vật hơn khoảng này (px) thì bỏ qua hướng ngắm
+  // Điện thoại chỉ có MỘT cần di chuyển: giữ nút hành động thì nhân vật tự quay về mục tiêu gần nhất.
+  autoAimMeleeRange: 120, // tìm mục tiêu cận chiến trong bán kính này (px)
+  autoAimGunRange: 430, // tìm mục tiêu để bắn trong bán kính này (px)
 };
 
 /**
@@ -136,21 +138,103 @@ export const MAP_GEN = {
   },
 };
 
-/** Đồ vật trên map: cây, đá, bụi quả */
+/**
+ * Cây cỏ trang trí & hái lượm (world/mapGen.js, lượt rải thứ hai — không đi qua vật cản).
+ * Mật độ thay đổi theo "đồng cỏ"/"đồng hoa" (noise tần số thấp) nên cỏ và hoa mọc thành từng mảng.
+ */
+export const FLORA = {
+  patchFrequency: 0.11, // tần số noise mảng cỏ/hoa: nhỏ → mảng to
+  tallGrass: { base: 0.03, patch: 0.32 }, // xác suất = base + patch * độ dày mảng (0..1)
+  flower: { base: 0.015, patch: 0.26 },
+  forestTallGrass: 0.05,
+  forestFlower: 0.015,
+  mushroom: 0.045, // chỉ trong rừng
+  wildCarrot: 0.007,
+  wildPotato: 0.007,
+  reed: 0.3, // ô cát/cỏ sát mép nước
+  // Tỉ lệ loại cây (cộng lại = 1). Rừng nhiều thông; đồng cỏ có anh đào và cây táo.
+  forestTrees: { oak: 0.45, pine: 0.38, birch: 0.17 },
+  grassTrees: { oak: 0.35, sakura: 0.25, apple: 0.28, birch: 0.12 },
+  flowerColors: 5, // số màu hoa (xem COLORS.flowerPetals)
+  windSpeed: 1.3, // tốc độ gió làm cỏ lay (radian/giây)
+  windAmount: 0.16, // góc nghiêng tối đa của ngọn cỏ (radian)
+  bendRadius: 34, // người/thú đi ngang trong bán kính này thì cỏ rạp sang bên
+  bendAmount: 0.6, // góc rạp tối đa (radian)
+};
+
+/** Đồ vật trên map: cây, đá, bụi quả, cây cỏ nhỏ */
 export const WORLD_OBJECTS = {
   tree: { isBlocking: true, collisionRadius: 9, minScale: 0.9, maxScale: 1.15 },
   rock: { isBlocking: true, collisionRadius: 15, minScale: 0.85, maxScale: 1.1 },
   bush: { isBlocking: false, collisionRadius: 0, minScale: 0.9, maxScale: 1.1 },
+  tallGrass: { isBlocking: false, collisionRadius: 0, minScale: 0.85, maxScale: 1.2 },
+  flower: { isBlocking: false, collisionRadius: 0, minScale: 0.85, maxScale: 1.15 },
+  mushroom: { isBlocking: false, collisionRadius: 0, minScale: 0.8, maxScale: 1.15 },
+  wildCarrot: { isBlocking: false, collisionRadius: 0, minScale: 0.9, maxScale: 1.1 },
+  wildPotato: { isBlocking: false, collisionRadius: 0, minScale: 0.9, maxScale: 1.1 },
+  reed: { isBlocking: false, collisionRadius: 0, minScale: 0.85, maxScale: 1.2 },
 };
 
-/** Thu thập tài nguyên (systems/gathering.js) */
+/**
+ * Thu thập tài nguyên (systems/gathering.js).
+ * clearable: cây cỏ nhỏ bị dọn đi khi cày đất / xây lên (mọc lại khi ô trống trở lại).
+ */
 export const HARVEST = {
   // Tay không 12 nhát, rìu 4 nhát mới đổ (xem TOOLS.treeDamage)
   tree: { maxHealth: 12, dropItem: 'wood', dropMin: 4, dropMax: 6, regrowSeconds: 150 },
   rock: { maxHealth: 8, dropItem: 'stone', dropMin: 3, dropMax: 5, regrowSeconds: 200 },
   bush: { dropItem: 'berry', dropMin: 2, dropMax: 3, regrowSeconds: 90 },
+  // Cắt cỏ cao (nút Dùng hoặc vung tay/công cụ qua) → thỉnh thoảng rơi hạt lúa mì
+  tallGrass: { dropItem: 'wheatSeeds', dropChance: 0.4, dropMin: 1, dropMax: 2, regrowSeconds: 70, clearable: true },
+  flower: { regrowSeconds: 120, clearable: true },
+  reed: { regrowSeconds: 120, clearable: true },
+  mushroom: { dropItem: 'mushroom', dropMin: 1, dropMax: 2, regrowSeconds: 160, clearable: true },
+  wildCarrot: { dropItem: 'carrot', dropMin: 1, dropMax: 3, regrowSeconds: 200, clearable: true },
+  wildPotato: { dropItem: 'potato', dropMin: 1, dropMax: 3, regrowSeconds: 200, clearable: true },
+  apple: { dropItem: 'apple', dropMin: 1, dropMax: 3, regrowSeconds: 110 }, // táo trên cây táo
   regrowRetrySeconds: 3, // nếu có ai đứng chắn chỗ cây mọc lại thì đợi thêm chừng này
 };
+
+// =====================================================================
+// Nông trại & chăn nuôi
+// =====================================================================
+
+/** Trồng trọt (systems/farming.js). Cây lớn qua `stages` giai đoạn, mỗi giai đoạn `stageSeconds` giây. */
+export const FARMING = {
+  reachTiles: 1, // ô được cày/gieo nằm trước mặt cách chừng này ô
+  pointerReachTiles: 2.2, // dùng chuột thì chọn ô dưới con trỏ, trong bán kính này
+  waterRangeTiles: 4, // ruộng cách nước ≤ 4 ô thì đất ẩm → cây lớn nhanh hơn
+  wetGrowthMultiplier: 1.8,
+  stages: 4, // 0 = mầm, 3 = chín
+  crops: {
+    wheat: {
+      stageSeconds: 28,
+      harvest: [
+        { itemId: 'wheat', min: 1, max: 2 },
+        { itemId: 'wheatSeeds', min: 1, max: 3 },
+      ],
+    },
+    carrot: { stageSeconds: 34, harvest: [{ itemId: 'carrot', min: 2, max: 4 }] },
+    potato: { stageSeconds: 38, harvest: [{ itemId: 'potato', min: 2, max: 4 }] },
+  },
+};
+
+/** Chăn nuôi (systems/husbandry.js): cho ăn → "yêu" → hai con gần nhau đẻ con non. */
+export const HUSBANDRY = {
+  followRadius: 280, // cầm thức ăn ưa thích thì thú trong bán kính này đi theo
+  followStopDistance: 64, // đi theo tới chừng này thì dừng (không dí sát người)
+  followSpeedMultiplier: 1.4, // đi theo nhanh hơn đi dạo
+  loveSeconds: 25, // thời gian "đang yêu" sau khi được cho ăn
+  mateSearchRadius: 300,
+  mateDistance: 34, // hai con lại gần chừng này thì đẻ
+  breedCooldownSeconds: 70, // đẻ xong phải chờ chừng này mới đẻ tiếp
+  babyGrowSeconds: 150, // con non lớn thành con trưởng thành sau chừng này giây
+  babyFeedGrowRatio: 0.15, // cho con non ăn → lớn nhanh thêm 15% thời gian
+  babyScale: 0.58,
+  maxFarmAnimals: 48, // đông quá thì không đẻ thêm (cho máy nhẹ)
+  heartBobSpeed: 5,
+};
+
 
 /** Camera (world/camera.js) */
 export const CAMERA = {
@@ -216,8 +300,25 @@ export const ITEMS = {
   rawMeat: { name: 'Thịt sống', stackSize: 10, food: { hunger: 14, health: -4 }, cooksInto: 'cookedMeat' },
   cookedMeat: { name: 'Thịt nướng', stackSize: 10, food: { hunger: 40, health: 12 } },
   hide: { name: 'Da thú', stackSize: 20 },
+  // Nông trại. seedOf: gieo xuống ruộng thì mọc thành loại cây đó (FARMING.crops).
+  wheatSeeds: { name: 'Hạt lúa mì', stackSize: 40, seedOf: 'wheat' },
+  wheat: { name: 'Lúa mì', stackSize: 40 },
+  carrot: { name: 'Cà rốt', stackSize: 20, food: { hunger: 8, health: 1 }, seedOf: 'carrot' },
+  potato: { name: 'Khoai tây', stackSize: 20, food: { hunger: 5, health: 0 }, seedOf: 'potato', cooksInto: 'bakedPotato' },
+  bakedPotato: { name: 'Khoai nướng', stackSize: 20, food: { hunger: 26, health: 6 } },
+  bread: { name: 'Bánh mì', stackSize: 20, food: { hunger: 32, health: 8 } },
+  apple: { name: 'Táo', stackSize: 20, food: { hunger: 10, health: 3 } },
+  mushroom: { name: 'Nấm', stackSize: 20, food: { hunger: 6, health: 1 } },
+  egg: { name: 'Trứng', stackSize: 16, cooksInto: 'friedEgg' },
+  friedEgg: { name: 'Trứng ốp', stackSize: 16, food: { hunger: 16, health: 5 } },
+  wool: { name: 'Len', stackSize: 30 },
+  bucket: { name: 'Xô gỗ', stackSize: 4 },
+  // returnsItem: ăn/uống xong trả lại cái xô
+  milk: { name: 'Xô sữa', stackSize: 1, food: { hunger: 18, health: 10 }, returnsItem: 'bucket' },
   axe: { name: 'Rìu', stackSize: 1, tool: 'axe' },
-  pickaxe: { name: 'Cuốc', stackSize: 1, tool: 'pickaxe' },
+  pickaxe: { name: 'Cuốc chim', stackSize: 1, tool: 'pickaxe' },
+  hoe: { name: 'Cuốc làm đất', stackSize: 1, tool: 'hoe' },
+  shears: { name: 'Kéo xén lông', stackSize: 1, tool: 'shears' },
   gun: { name: 'Súng', stackSize: 1, isGun: true },
   ammo: { name: 'Đạn', stackSize: 60 },
   wall: { name: 'Tường gỗ', stackSize: 20, structure: 'wall' },
@@ -241,20 +342,24 @@ export const CRAFTING = {
 export const RECIPES = [
   { id: 'axe', result: 'axe', count: 1, cost: { wood: 5, stone: 2 } },
   { id: 'pickaxe', result: 'pickaxe', count: 1, cost: { wood: 5, stone: 3 } },
+  { id: 'hoe', result: 'hoe', count: 1, cost: { wood: 4, stone: 1 } },
+  { id: 'bread', result: 'bread', count: 1, cost: { wheat: 3 } },
   { id: 'workbench', result: 'workbench', count: 1, cost: { wood: 12, stone: 4 } },
   { id: 'campfire', result: 'campfire', count: 1, cost: { wood: 6, stone: 3 } },
   { id: 'fence', result: 'fence', count: 2, cost: { wood: 4 } },
+  { id: 'shears', result: 'shears', count: 1, cost: { stone: 3, wood: 1 }, station: 'workbench' },
+  { id: 'bucket', result: 'bucket', count: 1, cost: { wood: 5 }, station: 'workbench' },
   { id: 'wall', result: 'wall', count: 1, cost: { wood: 6 }, station: 'workbench' },
   { id: 'door', result: 'door', count: 1, cost: { wood: 8 }, station: 'workbench' },
   { id: 'trap', result: 'trap', count: 1, cost: { wood: 4, stone: 4 }, station: 'workbench' },
-  { id: 'bed', result: 'bed', count: 1, cost: { wood: 10, hide: 3 }, station: 'workbench' },
+  { id: 'bed', result: 'bed', count: 1, cost: { wood: 8, wool: 3 }, station: 'workbench' },
   { id: 'gun', result: 'gun', count: 1, cost: { wood: 10, stone: 12, hide: 2 }, station: 'workbench' },
   { id: 'ammo', result: 'ammo', count: 6, cost: { stone: 3, wood: 1 }, station: 'workbench' },
 ];
 
 /** Túi đồ (systems/inventory.js) */
 export const INVENTORY = {
-  slotCount: 20,
+  slotCount: 25,
   hotbarSize: 9, // 9 ô đầu là thanh nhanh (phím 1–9). Màn hẹp chỉ hiện 6 ô (xem style.css)
 };
 
@@ -263,6 +368,8 @@ export const TOOLS = {
   hand: { creatureDamage: 6, treeDamage: 1, rockDamage: 1 },
   axe: { creatureDamage: 14, treeDamage: 3, rockDamage: 1 },
   pickaxe: { creatureDamage: 11, treeDamage: 1, rockDamage: 3 },
+  hoe: { creatureDamage: 7, treeDamage: 1, rockDamage: 1 },
+  shears: { creatureDamage: 5, treeDamage: 1, rockDamage: 1 },
 };
 
 /**
@@ -406,11 +513,53 @@ export const ANIMALS = {
       { itemId: 'hide', min: 1, max: 1 },
     ],
   },
+  // ----- Vật nuôi (isFarm): hiền, đi theo khi bạn cầm món chúng thích, được lưu lại cùng thế giới -----
+  chicken: {
+    isFarm: true,
+    radius: 11,
+    maxHealth: 12,
+    walkSpeed: 42,
+    fleeSpeed: 150,
+    favoriteFood: 'wheatSeeds',
+    eggSeconds: { min: 55, max: 100 }, // gà trưởng thành đẻ trứng sau mỗi khoảng này
+    drops: [{ itemId: 'rawMeat', min: 1, max: 1 }],
+  },
+  sheep: {
+    isFarm: true,
+    radius: 16,
+    maxHealth: 24,
+    walkSpeed: 38,
+    fleeSpeed: 140,
+    favoriteFood: 'wheat',
+    woolRegrowSeconds: 80, // xén xong thì lông mọc lại sau chừng này giây
+    shearWool: { min: 1, max: 3 },
+    drops: [
+      { itemId: 'rawMeat', min: 1, max: 2 },
+      { itemId: 'wool', min: 1, max: 1 },
+    ],
+  },
+  cow: {
+    isFarm: true,
+    radius: 19,
+    maxHealth: 34,
+    walkSpeed: 34,
+    fleeSpeed: 130,
+    favoriteFood: 'wheat',
+    milkSeconds: 45, // vắt sữa xong phải chờ chừng này mới vắt tiếp
+    drops: [
+      { itemId: 'rawMeat', min: 2, max: 3 },
+      { itemId: 'hide', min: 1, max: 2 },
+    ],
+  },
 };
 
 /** Sinh và duy trì số lượng thú */
 export const ANIMAL_SPAWN = {
-  initialCount: { rabbit: 22, deer: 12, boar: 9 },
+  initialCount: { rabbit: 22, deer: 12, boar: 9 }, // thú rừng — bị săn hết thì sinh thêm
+  farmHerds: { chicken: 4, sheep: 3, cow: 3 }, // số ĐÀN vật nuôi lúc tạo đảo
+  herdSize: { min: 2, max: 4 },
+  herdSpread: 70, // các con trong đàn đứng cách tâm đàn tối đa chừng này px
+  nearSpawnHerdTiles: { min: 6, max: 12 }, // một đàn gà đứng gần điểm xuất phát để dễ thấy
   maxAlive: 40,
   respawnIntervalSeconds: 10,
   respawnMinDistance: 650, // sinh thêm ngoài tầm nhìn
@@ -483,6 +632,11 @@ export const PARTICLES = {
     spark: { colors: ['#fff1a8', '#ffd58a'], count: 4, speed: [80, 200], life: [0.12, 0.25], size: [2, 3.5], gravity: 0 },
     smoke: { colors: ['rgba(255,255,255,0.7)', 'rgba(230,226,240,0.6)'], count: 1, speed: [8, 24], life: [1, 1.6], size: [4, 8], gravity: -40 },
     heal: { colors: ['#b8f0c8', '#ffffff'], count: 6, speed: [20, 60], life: [0.5, 0.9], size: [2.5, 4], gravity: -90 },
+    grassCut: { colors: ['#9fd6a8', '#bce6c2', '#c9ecb6'], count: 6, speed: [40, 110], life: [0.35, 0.7], size: [2, 4], gravity: 160 },
+    soil: { colors: ['#c9a27e', '#b88d68', '#dcbf9c'], count: 8, speed: [40, 120], life: [0.3, 0.6], size: [2.5, 4.5], gravity: 260 },
+    sprout: { colors: ['#9fe0a8', '#d9f5c4', '#ffffff'], count: 6, speed: [20, 60], life: [0.5, 0.9], size: [2, 3.5], gravity: -70 },
+    love: { colors: ['#ffb3c7', '#ff9ab5', '#ffd6e2'], count: 6, speed: [20, 60], life: [0.6, 1.1], size: [2.5, 4.5], gravity: -80 },
+    wool: { colors: ['#ffffff', '#f6f1fb', '#efe8f6'], count: 10, speed: [40, 120], life: [0.5, 0.9], size: [3, 6], gravity: 120 },
   },
 };
 
@@ -517,7 +671,8 @@ export const RENDER = {
   terrainMaxResolution: 1.5, // độ nét tối đa của khối mặt đất — giới hạn để đỡ tốn RAM trên điện thoại
   landBlobRadius: 0.72, // bán kính "giọt" đất so với cạnh ô → bờ biển bo tròn
   shallowWaterRadius: 1.1, // vùng nước nông sáng màu quanh bờ, so với cạnh ô
-  decorationChance: { grassTuft: 0.3, waterWave: 0.1, sandDot: 0.25 },
+  // meadowDots: chấm hoa li ti vẽ sẵn trên cỏ; lilyPad: lá súng ở ô nước sát bờ (lilyFlower: có hoa)
+  decorationChance: { grassTuft: 0.3, waterWave: 0.1, sandDot: 0.25, meadowDots: 0.2, lilyPad: 0.12, lilyFlower: 0.3 },
   objectCullMarginTiles: 2, // vẽ dư ra ngoài màn hình (ô) để tán cây cao không bị cắt
   treeSwaySpeed: 1.6, // tốc độ lắc lư của tán cây (radian/giây)
   treeSwayAmount: 2.5, // biên độ lắc lư (px)
@@ -624,4 +779,104 @@ export const COLORS = {
   minimapZombie: '#5f9b55',
   minimapStructure: '#c29f82',
   minimapView: 'rgba(255, 255, 255, 0.9)',
+  minimapFarm: '#c9a27e',
+
+  // ----- Các loại cây -----
+  pine: '#8fcfae',
+  pineShade: '#74b897',
+  pineHighlight: '#b5e3c9',
+  birchTrunk: '#f4f0ea',
+  birchMark: '#8d8398',
+  birchLeaves: '#c3e8a4',
+  birchLeavesShade: '#a9d78b',
+  sakura: '#ffc9da',
+  sakuraShade: '#f5aec4',
+  sakuraHighlight: '#ffe3ec',
+  apple: '#ff8f8f',
+  appleLeaf: '#8cc993',
+
+  // ----- Cỏ, hoa, nấm, cây dại -----
+  tallGrass: '#94d2a0',
+  tallGrassShade: '#7cc08c',
+  tallGrassTip: '#c2ebb4',
+  flowerPetals: ['#ffb3c7', '#ffe08a', '#b9c8ff', '#d7b8f5', '#ffffff'],
+  flowerCenter: '#ffd166',
+  flowerStem: '#86c48f',
+  mushroomCap: '#ff9f9f',
+  mushroomCapShade: '#ef8585',
+  mushroomSpot: '#fff6f0',
+  mushroomStem: '#fff3e3',
+  carrotLeaf: '#8fd17e',
+  carrot: '#ffb070',
+  carrotShade: '#f29b55',
+  potatoLeaf: '#9ad3a0',
+  potatoFlower: '#f3ecff',
+  potato: '#e3c08f',
+  potatoShade: '#cfa774',
+  bakedPotato: '#d9a066',
+  reed: '#a8cf8e',
+  reedTip: '#c9a27e',
+  lilyPad: '#9fd6a8',
+  lilyPadShade: '#86c895',
+  lilyFlower: '#ffd3e0',
+  meadowDots: ['#ffd3e0', '#fff2b3', '#dfe3ff', '#ffffff'], // chấm hoa li ti vẽ sẵn trên cỏ
+
+  // ----- Ruộng & cây trồng -----
+  soil: '#d4b08b',
+  soilWet: '#b99273',
+  soilFurrow: 'rgba(120, 84, 60, 0.22)',
+  soilEdge: '#c29f82',
+  wheat: '#f3d27a',
+  wheatShade: '#ddb85f',
+  wheatStalk: '#a9d48c',
+  wheatYoung: '#9fdb9a',
+  farmTargetValid: 'rgba(140, 220, 160, 0.9)',
+  farmTargetInvalid: 'rgba(255, 150, 150, 0.85)',
+
+  // ----- Vật nuôi -----
+  chicken: '#ffffff',
+  chickenOutline: '#e6dccf',
+  chickenComb: '#ff8f9e',
+  beak: '#ffc861',
+  sheepWool: '#fbf8ff',
+  sheepWoolShade: '#e9e2f2',
+  sheepFace: '#bfb1c9',
+  sheepSheared: '#f2dfd2',
+  sheepShearedOutline: '#dcc3b2',
+  cow: '#fffaf3',
+  cowOutline: '#e3d3c2',
+  cowSpot: '#c9b2a0',
+  cowSnout: '#ffc8cf',
+  horn: '#f6ead2',
+  heart: '#ff8fb0',
+
+  // ----- Đồ vật nông trại (icon) -----
+  bread: '#e8b877',
+  breadTop: '#f6d29a',
+  egg: '#fff7ea',
+  eggShade: '#f0e2cc',
+  yolk: '#ffc94d',
+  bucket: '#c8a27f',
+  bucketBand: '#9f8270',
+  milk: '#ffffff',
+  wool: '#fbf8ff',
+  woolShade: '#e3d9ee',
+  shearsBlade: '#d9d3e6',
+  shearsHandle: '#ff9fb2',
+
+  // ----- Sinh vật trang trí -----
+  butterflyWings: ['#ffb3c7', '#ffe08a', '#b9c8ff', '#c9f0d0'],
+  firefly: 'rgba(255, 244, 170, 0.95)',
+  fireflyGlow: 'rgba(255, 244, 170, 0.25)',
+};
+
+/** Bướm (ban ngày) và đom đóm (ban đêm) bay quanh camera — chỉ để trang trí (render/ambient.js). */
+export const AMBIENT = {
+  butterflyCount: 7,
+  fireflyCount: 14,
+  butterflySpeed: 34,
+  fireflySpeed: 14,
+  turnRate: 1.6, // độ "lượn" khi bay (radian/giây)
+  flapSpeed: 16,
+  respawnMargin: 80, // bay ra ngoài màn hình quá chừng này thì xuất hiện lại chỗ khác
 };

@@ -1,6 +1,7 @@
 // Gom mọi nguồn điều khiển (bàn phím, chuột, cần điều khiển ảo) về một giao diện chung theo "hành động".
 // Game chỉ hỏi: đang đi hướng nào? ngắm hướng nào? có bắn không? vừa bấm "interact" chưa?
-// Nút và cần cảm ứng (ui/touchControls.js) đẩy dữ liệu vào đây qua setTouchMove / setTouchAim / triggerAction.
+// Nút và cần cảm ứng (ui/touchControls.js) đẩy dữ liệu vào đây qua setTouchMove / setTouchPrimary / triggerAction.
+// Điện thoại chỉ có MỘT cần di chuyển; hướng đánh/bắn do game tự ngắm (systems/interaction.js).
 
 import { KEY_BINDINGS, INPUT } from './config.js';
 import { normalizeInto } from './utils/math.js';
@@ -34,7 +35,7 @@ export class Input {
     this.pressedActions = new Set(); // hành động vừa bấm trong frame này
     this.mouse = { x: 0, y: 0, isDown: false, hasPosition: false };
     this.touchMove = { x: 0, y: 0 };
-    this.touchAim = { x: 0, y: 0, isActive: false, isFiring: false };
+    this.isTouchPrimaryHeld = false; // đang giữ nút hành động lớn trên điện thoại
     this.device = detectInitialDevice();
     this.deviceListeners = [];
 
@@ -125,11 +126,8 @@ export class Input {
     this.touchMove.y = y;
   }
 
-  setTouchAim(x, y, isActive) {
-    this.touchAim.x = x;
-    this.touchAim.y = y;
-    this.touchAim.isActive = isActive;
-    this.touchAim.isFiring = isActive && Math.hypot(x, y) >= INPUT.aimFireThreshold;
+  setTouchPrimary(isHeld) {
+    this.isTouchPrimaryHeld = isHeld;
   }
 
   /** Nút cảm ứng gọi hàm này để "bấm" một hành động, giống như nhấn phím. */
@@ -152,24 +150,20 @@ export class Input {
   }
 
   /**
-   * Hướng ngắm (vector đơn vị) tính từ điểm gốc trên màn hình (thường là vị trí nhân vật),
-   * hoặc null nếu hiện không ngắm.
+   * Hướng ngắm bằng chuột (vector đơn vị) tính từ điểm gốc trên màn hình (thường là vị trí nhân vật),
+   * hoặc null nếu không ngắm. Cảm ứng không ngắm tay (game tự ngắm khi bấm nút hành động).
    */
   getAimDirection(originScreenX, originScreenY) {
-    if (this.device === DEVICES.TOUCH) {
-      if (!this.touchAim.isActive) return null;
-      return normalizeInto(this.aimVector, this.touchAim.x, this.touchAim.y);
-    }
-    if (!this.mouse.hasPosition) return null;
+    if (this.device === DEVICES.TOUCH || !this.mouse.hasPosition) return null;
     const offsetX = this.mouse.x - originScreenX;
     const offsetY = this.mouse.y - originScreenY;
     if (Math.hypot(offsetX, offsetY) < INPUT.minAimDistance) return null;
     return normalizeInto(this.aimVector, offsetX, offsetY);
   }
 
-  /** Đang giữ nút hành động chính: chuột trái, hoặc kéo cần ngắm quá ngưỡng. */
+  /** Đang giữ nút hành động chính: chuột trái, hoặc nút tròn lớn trên điện thoại. */
   isFireHeld() {
-    return this.device === DEVICES.TOUCH ? this.touchAim.isFiring : this.mouse.isDown;
+    return this.device === DEVICES.TOUCH ? this.isTouchPrimaryHeld : this.mouse.isDown;
   }
 
   /** Muốn chạy nhanh: giữ Shift, hoặc đẩy cần di chuyển gần hết cỡ. */
@@ -193,6 +187,6 @@ export class Input {
     this.pressedActions.clear();
     this.mouse.isDown = false;
     this.setTouchMove(0, 0);
-    this.setTouchAim(0, 0, false);
+    this.setTouchPrimary(false);
   }
 }

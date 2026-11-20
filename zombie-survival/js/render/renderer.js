@@ -1,8 +1,8 @@
 // Vẽ toàn bộ thế giới mỗi frame, chỉ phần camera nhìn thấy, theo thứ tự lớp:
-//   mặt đất → đồ nằm phẳng (bẫy, giường, vật phẩm rơi) → bóng mờ xây, vạch ngắm
-//   → vật có chiều cao (cây, đá, công trình, sinh vật, người chơi) sắp theo y → đạn, hạt
-//   → lớp phủ đêm + nguồn sáng → số sát thương (để luôn đọc được kể cả ban đêm).
-// Dùng terrainCache.js, sprites.js, worldSprites.js, effects.js; camera ở world/camera.js.
+//   mặt đất → đất ruộng, đồ nằm phẳng (bẫy, giường, vật phẩm rơi) → bóng mờ xây, ô cày/gieo, vạch ngắm
+//   → vật có chiều cao (cây, cỏ hoa, cây trồng, đá, công trình, sinh vật, người chơi) sắp theo y → đạn, hạt, bướm
+//   → lớp phủ đêm + nguồn sáng → đom đóm, số sát thương (để luôn đọc được kể cả ban đêm).
+// Dùng terrainCache.js, sprites.js, worldSprites.js, floraSprites.js, ambient.js, effects.js; camera ở world/camera.js.
 
 import { COLORS, PLAYER, RENDER, STRUCTURES, LIGHTING } from '../config.js';
 import { getObjectAtTile } from '../world/mapGen.js';
@@ -11,7 +11,20 @@ import { getDarkness } from '../systems/dayNight.js';
 import { getSelectedItemId, isHoldingGun } from '../systems/items.js';
 import { createTerrainCache } from './terrainCache.js';
 import { drawPlayer, drawZombie, drawAnimal } from './sprites.js';
-import { drawTree, drawRock, drawBush, drawStructure, drawPickup, drawBullet, drawBuildGhost } from './worldSprites.js';
+import { drawRock, drawBush, drawStructure, drawPickup, drawBullet, drawBuildGhost } from './worldSprites.js';
+import {
+  drawTree,
+  drawTallGrass,
+  drawFlower,
+  drawReed,
+  drawMushroom,
+  drawWildCarrot,
+  drawWildPotato,
+  drawCrop,
+  drawPlotSoil,
+  drawFarmTarget,
+} from './floraSprites.js';
+import { createAmbient, updateAmbient, drawButterflies, drawFireflies } from './ambient.js';
 import { drawParticles, drawDamageNumbers, drawNightOverlay } from './effects.js';
 
 /** Hàm vẽ theo `type` của entity. Thêm loại mới chỉ cần thêm một dòng. */
@@ -20,6 +33,13 @@ const DRAW_BY_TYPE = {
   tree: drawTree,
   rock: drawRock,
   bush: drawBush,
+  tallGrass: drawTallGrass,
+  flower: drawFlower,
+  reed: drawReed,
+  mushroom: drawMushroom,
+  wildCarrot: drawWildCarrot,
+  wildPotato: drawWildPotato,
+  plot: drawCrop,
   structure: drawStructure,
   zombie: drawZombie,
   animal: drawAnimal,
@@ -102,7 +122,8 @@ export function createRenderer(ctx) {
   // Object dùng lại mỗi frame để tránh tạo rác.
   const drawList = [];
   const tileRange = { minX: 0, minY: 0, maxX: 0, maxY: 0 };
-  const frame = { timeSeconds: 0, reducedMotion: false, heldItemId: null };
+  const frame = { timeSeconds: 0, reducedMotion: false, heldItemId: null, playerX: 0, playerY: 0 };
+  const ambient = createAmbient();
   const lights = Array.from({ length: MAX_LIGHTS }, () => ({ x: 0, y: 0, radius: 0, intensity: 1, isWarm: false }));
   let lightCount = 0;
 
@@ -142,6 +163,9 @@ export function createRenderer(ctx) {
   }
 
   function drawGroundLayer(game) {
+    for (const plot of game.plots) {
+      if (isVisible(game.camera, plot.x, plot.centerY)) drawPlotSoil(ctx, plot);
+    }
     for (const structure of game.structures) {
       if (isFlatStructure(structure) && isVisible(game.camera, structure.x, structure.y)) drawStructure(ctx, structure, frame);
     }
@@ -163,6 +187,9 @@ export function createRenderer(ctx) {
     }
     for (const structure of game.structures) {
       if (!isFlatStructure(structure) && isVisible(camera, structure.x, structure.y)) drawList.push(structure);
+    }
+    for (const plot of game.plots) {
+      if (plot.crop && isVisible(camera, plot.x, plot.y)) drawList.push(plot);
     }
     for (const list of [game.zombies, game.animals]) {
       for (const creature of list) if (isVisible(camera, creature.x, creature.y)) drawList.push(creature);
@@ -187,23 +214,31 @@ export function createRenderer(ctx) {
       frame.timeSeconds = game.elapsedSeconds;
       frame.reducedMotion = appState.reducedMotion;
       frame.heldItemId = getSelectedItemId(game);
+      frame.playerX = game.player.x;
+      frame.playerY = game.player.y;
       const { camera } = game;
+      const darkness = getDarkness(game.dayNight);
+      const showAmbient = !appState.reducedMotion;
+      if (showAmbient) updateAmbient(ambient, camera, game.elapsedSeconds, darkness);
       const terrainResolution = Math.min(viewport.pixelRatio * camera.zoom, RENDER.terrainMaxResolution);
 
       applyCameraTransform(ctx, camera, viewport.pixelRatio, effects.shakeX, effects.shakeY);
       getTerrainCache(game.world).draw(ctx, camera, terrainResolution);
       drawGroundLayer(game);
       drawBuildGhost(ctx, game.buildGhost, frame);
+      drawFarmTarget(ctx, game.farmTarget);
       drawAimGuide(ctx, game);
       collectDepthSorted(game);
       for (const entity of drawList) DRAW_BY_TYPE[entity.type](ctx, entity, frame);
       drawBullets(game);
       drawParticles(ctx, effects);
+      if (showAmbient) drawButterflies(ctx, ambient);
 
       collectLights(game);
-      drawNightOverlay(ctx, effects, viewport, camera, getDarkness(game.dayNight), lights, lightCount);
+      drawNightOverlay(ctx, effects, viewport, camera, darkness, lights, lightCount);
 
       applyCameraTransform(ctx, camera, viewport.pixelRatio, effects.shakeX, effects.shakeY);
+      if (showAmbient) drawFireflies(ctx, ambient);
       drawDamageNumbers(ctx, effects);
     },
   };

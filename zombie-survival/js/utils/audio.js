@@ -60,6 +60,26 @@ function melody(audio, output, notes, spacing, duration, type, volume) {
 /** Công thức từng tiếng: (audio, output) => void */
 const SOUNDS = {
   click: (a, o) => tone(a, o, 0, { frequency: 660, duration: 0.05, type: 'triangle', volume: 0.25 }),
+  // ----- Nông trại -----
+  grass: (a, o) => noise(a, o, 0, { duration: 0.08, volume: 0.16, filterType: 'highpass', frequency: 2600 }),
+  till: (a, o) => {
+    noise(a, o, 0, { duration: 0.12, volume: 0.3, filterType: 'lowpass', frequency: 500 });
+    tone(a, o, 0, { frequency: 160, endFrequency: 110, duration: 0.1, type: 'triangle', volume: 0.2 });
+  },
+  plant: (a, o) => tone(a, o, 0, { frequency: 520, endFrequency: 780, duration: 0.12, volume: 0.24 }),
+  harvest: (a, o) => melody(a, o, [587, 784, 988], 0.06, 0.09, 'triangle', 0.24),
+  shear: (a, o) => {
+    noise(a, o, 0, { duration: 0.05, volume: 0.2, filterType: 'highpass', frequency: 3500 });
+    noise(a, o, 0.09, { duration: 0.05, volume: 0.2, filterType: 'highpass', frequency: 3500 });
+  },
+  love: (a, o) => melody(a, o, [659, 880, 1047], 0.08, 0.12, 'sine', 0.22),
+  // Tiếng thú: nốt trượt ngắn, dễ thương chứ không giống thật
+  cluck: (a, o) => {
+    tone(a, o, 0, { frequency: 900, endFrequency: 700, duration: 0.06, type: 'triangle', volume: 0.18 });
+    tone(a, o, 0.09, { frequency: 950, endFrequency: 760, duration: 0.06, type: 'triangle', volume: 0.16 });
+  },
+  baa: (a, o) => tone(a, o, 0, { frequency: 420, endFrequency: 380, duration: 0.35, type: 'sawtooth', volume: 0.07, attack: 0.04 }),
+  moo: (a, o) => tone(a, o, 0, { frequency: 180, endFrequency: 140, duration: 0.55, type: 'sawtooth', volume: 0.09, attack: 0.08 }),
   chop: (a, o) => {
     noise(a, o, 0, { duration: 0.08, volume: 0.45, frequency: 1200 });
     tone(a, o, 0, { frequency: 190, endFrequency: 120, duration: 0.09, type: 'triangle', volume: 0.35 });

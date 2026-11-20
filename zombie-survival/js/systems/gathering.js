@@ -1,8 +1,9 @@
-// Thu thập tài nguyên: chặt cây (nhiều nhát mới đổ), đập đá, hái quả; cây/đá/bụi mọc lại sau một thời gian.
-// Trạng thái nằm ngay trên object của map (health, isDepleted, regrowTimer — tạo trong world/mapGen.js).
-// Được gọi bởi combat.js (vung công cụ trúng cây/đá) và interaction.js (nút Tương tác).
+// Thu thập tài nguyên: chặt cây (nhiều nhát mới đổ), đập đá, hái quả/táo/nấm, nhổ cà rốt/khoai dại, cắt cỏ (rơi hạt).
+// Mọi thứ đều mọc lại sau một thời gian; cây cỏ nhỏ bị dọn khi cày ruộng / xây lên thì chờ ô trống mới mọc lại.
+// Trạng thái nằm ngay trên object của map (tạo trong world/mapGen.js). Gọi bởi combat.js, interaction.js, farming.js.
 
 import { HARVEST, TOOLS, WORLD_OBJECTS } from '../config.js';
+import { getStructureAtTile, tileIndexOf } from '../world/mapGen.js';
 import { spawnPickup, giveItemToPlayer } from '../entities/pickup.js';
 import { markFlowFieldDirty } from './pathfinding.js';
 import { randomInt, removeWhere } from '../utils/math.js';
@@ -13,16 +14,43 @@ const RESOURCE_EFFECTS = {
   tree: { effectHeight: 34, hitParticles: 'woodChips', hitSound: 'chop', breakParticles: 'leaves', breakSound: 'treeFall' },
   rock: { effectHeight: 12, hitParticles: 'stoneDust', hitSound: 'mine', breakParticles: 'stoneDust', breakSound: 'rockBreak' },
 };
-const BUSH_EFFECT_HEIGHT = 14;
+const PICK_EFFECT_HEIGHT = 14;
+const APPLE_EFFECT_HEIGHT = 40;
 const HIT_SHAKE_SECONDS = 0.18; // cây/đá rung nhẹ khi bị đánh
 const DROP_PILE_SIZE = 2; // chia đồ rơi thành nhiều đống nhỏ văng ra cho vui mắt
+
+/** Chữ trên nút Dùng khi đứng cạnh thứ hái được. */
+const PICK_LABELS = {
+  bush: 'Hái quả',
+  apple: 'Hái táo',
+  mushroom: 'Hái nấm',
+  wildCarrot: 'Nhổ cà rốt',
+  wildPotato: 'Đào khoai',
+  tallGrass: 'Cắt cỏ',
+};
+const PICK_PARTICLES = { bush: 'berryPop', mushroom: 'berryPop', wildCarrot: 'soil', wildPotato: 'soil', tallGrass: 'grassCut' };
 
 export function isHarvestable(object) {
   return !object.isDepleted && (object.type === 'tree' || object.type === 'rock');
 }
 
-export function hasBerries(object) {
-  return object.type === 'bush' && !object.isDepleted;
+export function isAppleTreeWithFruit(object) {
+  return object.type === 'tree' && object.variant === 'apple' && !object.isDepleted && object.fruitTimer <= 0;
+}
+
+/** Thứ hái được bằng tay (không tính cỏ): bụi quả, cây táo có quả, nấm, cây dại. */
+export function isPickableFood(object) {
+  if (isAppleTreeWithFruit(object)) return true;
+  if (object.isDepleted) return false;
+  return object.type === 'bush' || object.type === 'mushroom' || object.type === 'wildCarrot' || object.type === 'wildPotato';
+}
+
+export function isCuttableGrass(object) {
+  return object.type === 'tallGrass' && !object.isDepleted;
+}
+
+export function getPickLabel(object) {
+  return isAppleTreeWithFruit(object) ? PICK_LABELS.apple : PICK_LABELS[object.type];
 }
 
 /** Một nhát rìu/cuốc/tay không vào cây hoặc đá. */
@@ -61,16 +89,60 @@ function depleteResource(game, object) {
   markFlowFieldDirty(game.flowField);
 }
 
-export function pickBerries(game, bush) {
-  const settings = HARVEST.bush;
+function pickApples(game, tree) {
+  const settings = HARVEST.apple;
   giveItemToPlayer(game, settings.dropItem, randomInt(Math.random, settings.dropMin, settings.dropMax));
-  startRegrowing(game, bush);
-  emit(game, 'particles', { preset: 'berryPop', x: bush.x, y: bush.y - BUSH_EFFECT_HEIGHT });
+  tree.fruitTimer = settings.regrowSeconds;
+  game.fruitingTrees.push(tree);
+  emit(game, 'particles', { preset: 'leaves', x: tree.x, y: tree.y - APPLE_EFFECT_HEIGHT, count: 6 });
   emit(game, 'sound', { name: 'pick' });
 }
 
-/** Có ai đứng đúng chỗ cây/đá sắp mọc không (mọc đè lên thì bị kẹt). */
+/** Cắt cỏ cao: thỉnh thoảng rơi hạt lúa mì (như cách kiếm hạt giống đầu tiên). */
+export function cutGrass(game, grass) {
+  const settings = HARVEST.tallGrass;
+  startRegrowing(game, grass);
+  if (Math.random() < settings.dropChance) {
+    spawnPickup(game, settings.dropItem, randomInt(Math.random, settings.dropMin, settings.dropMax), grass.x, grass.y);
+  }
+  emit(game, 'particles', { preset: 'grassCut', x: grass.x, y: grass.y - PICK_EFFECT_HEIGHT / 2 });
+  emit(game, 'sound', { name: 'grass', x: grass.x, y: grass.y });
+}
+
+/** Hái / nhổ / cắt thứ đang đứng cạnh (nút Dùng). */
+export function pickObject(game, object) {
+  if (isAppleTreeWithFruit(object)) {
+    pickApples(game, object);
+    return;
+  }
+  if (object.type === 'tallGrass') {
+    cutGrass(game, object);
+    return;
+  }
+  const settings = HARVEST[object.type];
+  giveItemToPlayer(game, settings.dropItem, randomInt(Math.random, settings.dropMin, settings.dropMax));
+  startRegrowing(game, object);
+  emit(game, 'particles', { preset: PICK_PARTICLES[object.type], x: object.x, y: object.y - PICK_EFFECT_HEIGHT });
+  emit(game, 'sound', { name: 'pick' });
+}
+
+/** Cây cỏ nhỏ có thể bị dọn đi (khi cày đất / xây công trình lên ô đó). */
+export function isClearable(object) {
+  return Boolean(HARVEST[object.type]?.clearable);
+}
+
+/** Dọn cây cỏ nhỏ khỏi ô: không rơi gì, chờ ô trống trở lại mới mọc. */
+export function clearObject(game, object) {
+  if (object.isDepleted || !isClearable(object)) return;
+  startRegrowing(game, object);
+}
+
+/** Có ai/cái gì đứng đúng chỗ cây sắp mọc không (mọc đè lên thì bị kẹt hoặc đè lên ruộng/nhà). */
 function isSpotOccupied(game, object) {
+  const { world } = game;
+  if (getStructureAtTile(world, object.tileX, object.tileY)) return true;
+  if (world.plotByTile.has(tileIndexOf(world, object.tileX, object.tileY))) return true;
+  if (!WORLD_OBJECTS[object.type].isBlocking) return false;
   const isTouching = (entity) =>
     Math.hypot(entity.x - object.x, entity.y - object.y) < entity.radius + object.collisionRadius;
   return isTouching(game.player) || game.zombies.some(isTouching) || game.animals.some(isTouching);
@@ -79,21 +151,28 @@ function isSpotOccupied(game, object) {
 function restoreResource(game, object) {
   object.isDepleted = false;
   object.health = HARVEST[object.type].maxHealth ?? 0;
+  object.fruitTimer = 0;
   object.isBlocking = WORLD_OBJECTS[object.type].isBlocking;
   if (object.isBlocking) markFlowFieldDirty(game.flowField);
+}
+
+function updateFruit(game, deltaSeconds) {
+  for (const tree of game.fruitingTrees) tree.fruitTimer -= deltaSeconds;
+  removeWhere(game.fruitingTrees, (tree) => tree.fruitTimer <= 0);
 }
 
 export function updateRegrowth(game, deltaSeconds) {
   for (const object of game.regrowingObjects) {
     object.regrowTimer -= deltaSeconds;
     if (object.regrowTimer > 0) continue;
-    if (WORLD_OBJECTS[object.type].isBlocking && isSpotOccupied(game, object)) {
+    if (isSpotOccupied(game, object)) {
       object.regrowTimer = HARVEST.regrowRetrySeconds;
       continue;
     }
     restoreResource(game, object);
   }
   removeWhere(game.regrowingObjects, (object) => !object.isDepleted);
+  updateFruit(game, deltaSeconds);
 }
 
 /** Đồng hồ rung khi bị đánh (chỉ để vẽ); chỉ duyệt các object vừa bị đánh. */

@@ -8,7 +8,7 @@ import { getObjectAtTile, pixelToTile } from '../world/mapGen.js';
 import { circleOverlapsSquare } from '../world/collision.js';
 import { spawnBullet } from '../entities/bullet.js';
 import { spawnDrops } from '../entities/pickup.js';
-import { isHarvestable, hitResource } from './gathering.js';
+import { isHarvestable, isCuttableGrass, hitResource, cutGrass } from './gathering.js';
 import { damageStructure } from './building.js';
 import { countItem, removeItem } from './inventory.js';
 import { getHeldToolType, isHoldingGun } from './items.js';
@@ -103,8 +103,11 @@ function hitCreaturesInArc(game, damage) {
   return hitCount;
 }
 
-/** Cây/đá gần nhất trong hình quạt (duyệt các ô quanh người chơi). */
-function findResourceInArc(game) {
+/**
+ * Duyệt các ô quanh người chơi: cỏ cao trong hình quạt bị cắt luôn (vung qua là phạt cỏ),
+ * và trả về cây/đá gần nhất trong hình quạt (hoặc null).
+ */
+function sweepObjectsInArc(game) {
   const { world, player } = game;
   const searchTiles = Math.ceil((player.radius + COMBAT.meleeReach) / world.tileSize) + 1;
   const centerX = pixelToTile(world, player.x);
@@ -114,7 +117,9 @@ function findResourceInArc(game) {
   for (let tileY = centerY - searchTiles; tileY <= centerY + searchTiles; tileY++) {
     for (let tileX = centerX - searchTiles; tileX <= centerX + searchTiles; tileX++) {
       const object = getObjectAtTile(world, tileX, tileY);
-      if (!object || !isHarvestable(object) || !isInMeleeArc(player, object, object.collisionRadius)) continue;
+      if (!object || !isInMeleeArc(player, object, object.collisionRadius)) continue;
+      if (isCuttableGrass(object)) cutGrass(game, object);
+      if (!isHarvestable(object)) continue;
       const distance = Math.hypot(object.x - player.x, object.y - player.y);
       if (distance < nearestDistance) {
         nearest = object;
@@ -133,14 +138,14 @@ function beginSwing(game) {
   emit(game, 'sound', { name: 'swing' });
 }
 
-/** Vung công cụ đang cầm: ưu tiên trúng sinh vật, không có thì trúng cây/đá trước mặt. */
+/** Vung công cụ đang cầm: ưu tiên trúng sinh vật, không có thì trúng cây/đá trước mặt; cỏ cao thì phạt luôn. */
 export function meleeSwing(game) {
   if (game.player.meleeCooldown > 0) return;
   beginSwing(game);
   const toolType = getHeldToolType(game);
-  if (hitCreaturesInArc(game, TOOLS[toolType].creatureDamage) > 0) return;
-  const resource = findResourceInArc(game);
-  if (resource) hitResource(game, resource, toolType);
+  const hitCreature = hitCreaturesInArc(game, TOOLS[toolType].creatureDamage) > 0;
+  const resource = sweepObjectsInArc(game);
+  if (!hitCreature && resource) hitResource(game, resource, toolType);
 }
 
 /** Quay mặt về phía cây/đá rồi vung (dùng cho nút Tương tác). */

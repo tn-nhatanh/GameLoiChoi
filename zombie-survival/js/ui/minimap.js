@@ -76,9 +76,13 @@ export function createMinimap(canvas) {
     ctx.strokeRect(camera.x * scaleX, camera.y * scaleY, camera.viewWidth * scaleX, camera.viewHeight * scaleY);
   }
 
-  /** Công trình (ô vuông nhỏ nâu) và zombie (chấm xanh) — vẽ lại mỗi frame vì chúng thay đổi liên tục. */
+  /** Ruộng, công trình (ô vuông nhỏ) và zombie (chấm xanh) — vẽ lại mỗi frame vì chúng thay đổi liên tục. */
   function drawDynamicMarkers(game, scaleX, scaleY) {
     const tileSizeOnMap = Math.max(1, game.world.tileSize * scaleX);
+    ctx.fillStyle = COLORS.minimapFarm;
+    for (const plot of game.plots) {
+      ctx.fillRect(plot.tileX * tileSizeOnMap, plot.tileY * tileSizeOnMap, tileSizeOnMap, tileSizeOnMap);
+    }
     ctx.fillStyle = COLORS.minimapStructure;
     for (const structure of game.structures) {
       ctx.fillRect(structure.tileX * tileSizeOnMap, structure.tileY * tileSizeOnMap, tileSizeOnMap, tileSizeOnMap);

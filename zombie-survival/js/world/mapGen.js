@@ -1,9 +1,9 @@
-// Sinh hòn đảo theo seed: chia ô nước/cát/cỏ/rừng bằng noise, đào hồ, chọn điểm xuất phát, rải cây/đá/bụi quả.
-// Kết quả là object "world" chứa lưới ô (Uint8Array) và danh sách đồ vật, kèm vài hàm tra cứu ô.
-// Dùng world/noise.js và config.js (WORLD, MAP_GEN, WORLD_OBJECTS); được đọc bởi collision.js, renderer, minimap.
+// Sinh hòn đảo theo seed: chia ô nước/cát/cỏ/rừng bằng noise, đào hồ, chọn điểm xuất phát, rải cây/đá/bụi quả,
+// rồi rải thêm cây cỏ nhỏ (cỏ cao, hoa, nấm, cà rốt/khoai dại, lau sậy) thành từng mảng tự nhiên.
+// Kết quả là object "world" chứa lưới ô (Uint8Array) và danh sách đồ vật; dùng config.js (WORLD, MAP_GEN, FLORA...).
 
-import { WORLD, MAP_GEN, WORLD_OBJECTS, HARVEST } from '../config.js';
-import { createValueNoise2D, fractalNoise2D } from './noise.js';
+import { WORLD, MAP_GEN, WORLD_OBJECTS, HARVEST, FLORA, COLORS } from '../config.js';
+import { createValueNoise2D, fractalNoise2D, hash2D } from './noise.js';
 import { createSeededRandom, randomInt, clamp, lerp } from '../utils/math.js';
 
 /**
@@ -14,6 +14,14 @@ export const TILE = Object.freeze({ WATER: 0, SAND: 1, GRASS: 2, FOREST: 3 });
 
 const NO_OBJECT = -1;
 const MOISTURE_SEED_SALT = 0x9e3779b9; // trộn vào seed để noise độ ẩm khác noise độ cao
+// "Muối" riêng cho lượt rải cây cỏ và loại cây: dùng nguồn ngẫu nhiên RIÊNG, nên thêm cây cỏ mới
+// không làm xê dịch cây/đá cũ → các bản lưu cũ (ghi theo id đồ vật) vẫn khớp.
+const FLORA_SEED_SALT = 0x2545f491;
+const GRASS_PATCH_SALT = 0x68e31da4;
+const FLOWER_PATCH_SALT = 0x1b56c4e9;
+const TREE_VARIANT_SALT = 0x7feb352d;
+const PATCH_EDGE = 0.45; // noise mảng dưới mức này coi như không có mảng
+const PATCH_SOFTNESS = 0.35; // độ rộng vùng chuyển tiếp từ mép mảng vào giữa mảng
 
 // ---------- Tra cứu ô (dùng ở nhiều nơi) ----------
 
@@ -66,6 +74,7 @@ export function generateWorld(seedNumber) {
   carveLakes(world, random);
   world.spawn = findSpawnPoint(world);
   placeObjects(world, random);
+  placeFlora(world);
   return world;
 }
 
@@ -84,6 +93,8 @@ function createEmptyWorld(seed) {
     objectIndexByTile: new Int32Array(tileCount).fill(NO_OBJECT),
     // Công trình người chơi xây (systems/building.js): chỉ số ô → công trình.
     structureByTile: new Map(),
+    // Ô ruộng đã cày (systems/farming.js): chỉ số ô → ô ruộng.
+    plotByTile: new Map(),
     spawn: { x: 0, y: 0 },
   };
 }
@@ -264,6 +275,27 @@ function isNearSpawn(world, tileX, tileY) {
   return Math.hypot(tileX - spawnTileX, tileY - spawnTileY) <= MAP_GEN.spawnClearRadiusTiles;
 }
 
+/** Chọn một khoá theo bảng tỉ lệ { khoá: tỉ lệ } với số roll trong [0, 1). */
+function pickByShare(shares, roll) {
+  let total = 0;
+  for (const [key, share] of Object.entries(shares)) {
+    total += share;
+    if (roll < total) return key;
+  }
+  return Object.keys(shares)[0];
+}
+
+/** Kiểu dáng đồ vật: loại cây (sồi, thông, anh đào...) hoặc màu hoa — băm theo ô nên luôn cố định. */
+function pickVariant(world, type, tileX, tileY) {
+  const roll = hash2D(tileX, tileY, world.seed ^ TREE_VARIANT_SALT);
+  if (type === 'tree') {
+    const shares = getTile(world, tileX, tileY) === TILE.FOREST ? FLORA.forestTrees : FLORA.grassTrees;
+    return pickByShare(shares, roll);
+  }
+  if (type === 'flower') return Math.floor(roll * Math.min(FLORA.flowerColors, COLORS.flowerPetals.length));
+  return 0;
+}
+
 function addObject(world, type, tileX, tileY, random) {
   const settings = WORLD_OBJECTS[type];
   const center = tileCenter(world, tileX, tileY);
@@ -276,6 +308,8 @@ function addObject(world, type, tileX, tileY, random) {
     y: center.y + (random() * 2 - 1) * MAP_GEN.objectJitter,
     scale: lerp(settings.minScale, settings.maxScale, random()),
     swayPhase: random() * Math.PI * 2, // lệch pha để các cây không lắc đồng loạt
+    variant: pickVariant(world, type, tileX, tileY), // loại cây / màu hoa
+    fruitTimer: 0, // cây táo: 0 = đang có quả, > 0 = đang chờ ra quả
     isBlocking: settings.isBlocking,
     collisionRadius: settings.collisionRadius,
     // Trạng thái thu thập (systems/gathering.js)
@@ -296,6 +330,74 @@ function placeObjects(world, random) {
       if (!type || isNearSpawn(world, tileX, tileY)) continue;
       if (WORLD_OBJECTS[type].isBlocking && hasBlockingNeighbor(world, tileX, tileY)) continue;
       addObject(world, type, tileX, tileY, random);
+    }
+  }
+}
+
+// ---------- Bước 5: cây cỏ nhỏ ----------
+
+function isNextToWater(world, tileX, tileY) {
+  return (
+    getTile(world, tileX - 1, tileY) === TILE.WATER ||
+    getTile(world, tileX + 1, tileY) === TILE.WATER ||
+    getTile(world, tileX, tileY - 1) === TILE.WATER ||
+    getTile(world, tileX, tileY + 1) === TILE.WATER
+  );
+}
+
+/** Độ dày của "mảng" tại ô (0 = ngoài mảng, 1 = giữa mảng), lấy từ noise tần số thấp. */
+function patchDensity(noise, tileX, tileY) {
+  const value = noise(tileX * FLORA.patchFrequency, tileY * FLORA.patchFrequency);
+  return clamp((value - PATCH_EDGE) / PATCH_SOFTNESS, 0, 1);
+}
+
+/** Thử lần lượt từng loại với xác suất riêng, cộng dồn trên cùng một lần tung. */
+function pickFromChances(roll, chances) {
+  let total = 0;
+  for (const [type, chance] of chances) {
+    total += chance;
+    if (roll < total) return type;
+  }
+  return null;
+}
+
+function pickFloraType(world, tileX, tileY, roll, grassPatch, flowerPatch) {
+  const tile = getTile(world, tileX, tileY);
+  if (tile === TILE.WATER) return null;
+  if (isNextToWater(world, tileX, tileY)) return roll < FLORA.reed ? 'reed' : null;
+  if (tile === TILE.FOREST) {
+    return pickFromChances(roll, [
+      ['mushroom', FLORA.mushroom],
+      ['tallGrass', FLORA.forestTallGrass],
+      ['flower', FLORA.forestFlower],
+    ]);
+  }
+  if (tile !== TILE.GRASS) return null;
+  return pickFromChances(roll, [
+    ['wildCarrot', FLORA.wildCarrot],
+    ['wildPotato', FLORA.wildPotato],
+    ['flower', FLORA.flower.base + FLORA.flower.patch * flowerPatch],
+    ['tallGrass', FLORA.tallGrass.base + FLORA.tallGrass.patch * grassPatch],
+  ]);
+}
+
+/**
+ * Lượt rải thứ hai: cỏ cao, hoa, nấm, cây dại, lau sậy trên các ô còn trống.
+ * Cỏ và hoa dày lên ở giữa các "mảng" (noise tần số thấp) → trông như đồng cỏ, vạt hoa tự nhiên.
+ * Những thứ này không chắn đường nên mọc sát điểm xuất phát cũng được.
+ */
+function placeFlora(world) {
+  const random = createSeededRandom((world.seed ^ FLORA_SEED_SALT) >>> 0);
+  const grassNoise = createValueNoise2D((world.seed ^ GRASS_PATCH_SALT) >>> 0);
+  const flowerNoise = createValueNoise2D((world.seed ^ FLOWER_PATCH_SALT) >>> 0);
+  for (let tileY = 0; tileY < world.heightInTiles; tileY++) {
+    for (let tileX = 0; tileX < world.widthInTiles; tileX++) {
+      const roll = random(); // luôn tung trước khi lọc để thứ tự số ngẫu nhiên ổn định
+      if (getObjectAtTile(world, tileX, tileY)) continue;
+      const grassPatch = patchDensity(grassNoise, tileX, tileY);
+      const flowerPatch = patchDensity(flowerNoise, tileX, tileY);
+      const type = pickFloraType(world, tileX, tileY, roll, grassPatch, flowerPatch);
+      if (type) addObject(world, type, tileX, tileY, random);
     }
   }
 }

@@ -70,17 +70,27 @@
 
     <!-- ===== Điều khiển cảm ứng ===== -->
     <div id="touch-controls" class="touch-controls" hidden>
+      <!-- Một cần di chuyển duy nhất (nửa trái màn hình) -->
       <div class="joystick-zone joystick-zone--move" data-stick="move">
         <div class="joystick-base"><div class="joystick-knob"></div></div>
       </div>
-      <div class="joystick-zone joystick-zone--aim" data-stick="aim">
-        <div class="joystick-base joystick-base--aim"><div class="joystick-knob"></div></div>
-      </div>
-      <div class="touch-buttons">
+      <!-- Cụm nút bên phải: nút lớn giữ để đánh/bắn (tự ngắm), quanh nó là các nút nhỏ -->
+      <div class="touch-actions">
+        <button class="touch-button touch-button--primary" type="button" data-hold-action="primary">Đánh</button>
         <button class="touch-button touch-button--interact" type="button" data-game-action="interact">Dùng</button>
-        <button class="touch-button" type="button" data-game-action="reload">Nạp</button>
-        <button class="touch-button" type="button" data-game-action="build">Xây</button>
-        <button class="touch-button" type="button" data-game-action="craft">Chế tạo</button>
+        <button class="touch-button touch-button--build" type="button" data-game-action="build">Xây</button>
+        <button class="touch-button touch-button--craft" type="button" data-game-action="craft">Túi</button>
+        <button class="touch-button touch-button--reload" type="button" data-game-action="reload" hidden>Nạp</button>
+      </div>
+    </div>
+
+    <!-- Nhắc xoay ngang điện thoại (chỉ hiện khi chơi bằng cảm ứng mà màn hình đang dọc) -->
+    <div class="rotate-hint" role="dialog" aria-live="polite">
+      <div class="rotate-card">
+        <div class="rotate-phone" aria-hidden="true"></div>
+        <p class="rotate-title">Xoay ngang điện thoại nhé!</p>
+        <p class="muted-text">Đảo Zombie Ngố được thiết kế cho màn hình ngang.</p>
+        <button id="allow-portrait-button" class="menu-button menu-button--small" type="button">Vẫn chơi màn dọc</button>
       </div>
     </div>
 
@@ -183,13 +193,22 @@
             </ul>
             <h3>Điện thoại</h3>
             <ul class="key-list">
-              <li>Kéo ở nửa trái để đi, đẩy hết cỡ để chạy</li>
-              <li>Kéo ở nửa phải để ngắm; kéo xa để vung rìu / bắn</li>
-              <li>Nút <b>Dùng</b> (tương tác / đặt), <b>Nạp</b>, <b>Xây</b>, <b>Chế tạo</b>; chạm ô dưới cùng để đổi đồ</li>
+              <li>Xoay ngang điện thoại. Kéo ở nửa trái để đi, đẩy hết cỡ để chạy</li>
+              <li>Giữ <b>nút tròn lớn</b> bên phải để đánh / bắn — nhân vật tự quay về mục tiêu gần nhất</li>
+              <li>Nút <b>Dùng</b> (hái, cày, gieo, cho ăn…), <b>Xây</b>, <b>Túi</b>; chạm ô dưới cùng để đổi đồ</li>
+            </ul>
+            <h3>Nông trại</h3>
+            <ul class="key-list">
+              <li>Cắt <b>cỏ cao</b> để nhặt hạt lúa mì. Làm <b>cuốc làm đất</b>, cày ô cỏ thành ruộng rồi gieo hạt, cà rốt, khoai tây.</li>
+              <li>Ruộng gần hồ / biển đất ẩm nên cây lớn nhanh hơn. Cây chín vàng thì bấm <b>Dùng</b> để thu hoạch.</li>
+              <li>3 lúa mì làm được bánh mì. Khoai tây và trứng đem nướng ở đống lửa.</li>
+              <li>Cầm lúa mì thì bò và cừu đi theo, cầm hạt thì gà đi theo — dắt về chuồng rào kín (dùng cửa để ra vào).</li>
+              <li>Cho hai con cùng loài ăn → tim hồng → đẻ con non. Gà đẻ trứng, cừu xén lông bằng kéo, bò vắt sữa bằng xô.</li>
             </ul>
             <h3>Mẹo sinh tồn</h3>
             <ul class="key-list">
-              <li>Tay không chỉ làm được rìu, cuốc, đống lửa, hàng rào và <b>bàn chế tạo</b>. Đặt bàn xuống rồi đứng cạnh nó để làm tường, cửa, bẫy, giường, súng, đạn.</li>
+              <li>Tay không chỉ làm được rìu, cuốc, đống lửa, hàng rào, bánh mì và <b>bàn chế tạo</b>. Đứng cạnh bàn để làm tường, cửa, bẫy, giường, súng, kéo, xô…</li>
+              <li>Giường cần len — xén lông cừu nhé!</li>
               <li>Đói thì mất máu dần. Thịt nướng ở đống lửa hồi nhiều hơn thịt sống.</li>
               <li>Ban đêm ở xa đống lửa sẽ lạnh và đói nhanh hơn; ngồi cạnh lửa thì hồi máu.</li>
               <li>Zombie đi vòng qua tường, nhưng nếu bị rào kín chúng sẽ đập chỗ yếu nhất. Dùng gỗ để sửa!</li>

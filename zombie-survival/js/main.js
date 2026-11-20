@@ -25,11 +25,13 @@ import { updateSurvival, updateSleep, handlePlayerDeath } from './systems/surviv
 import { updateFlowField } from './systems/pathfinding.js';
 import { updateRegrowth, updateHitShakes } from './systems/gathering.js';
 import { updateBuildGhost, updateStructureTimers } from './systems/building.js';
+import { updateFarmTarget, updateFarming } from './systems/farming.js';
+import { updateHusbandry } from './systems/husbandry.js';
 import { updateReload, resolveBulletHits, updateTraps, startReload } from './systems/combat.js';
 import { craftRecipe } from './systems/crafting.js';
 import { moveSlot, takeFromSlot } from './systems/inventory.js';
-import { selectHotbarSlot, cycleHotbar, cycleBuildSelection } from './systems/items.js';
-import { INTERACTION, findInteraction, performInteraction, usePrimaryAction } from './systems/interaction.js';
+import { selectHotbarSlot, cycleHotbar, cycleBuildSelection, isHoldingGun } from './systems/items.js';
+import { INTERACTION, findInteraction, performInteraction, usePrimaryAction, getPrimaryActionLabel } from './systems/interaction.js';
 import { createRenderer } from './render/renderer.js';
 import {
   createEffects,
@@ -79,6 +81,7 @@ function syncOverlays(app) {
   const playing = isPlaying(app.state);
   const usingTouch = app.input.device === DEVICES.TOUCH;
   document.body.classList.toggle('is-touch', usingTouch);
+  document.body.classList.toggle('is-playing', playing); // CSS dùng để nhắc xoay ngang điện thoại
   app.hud.setVisible(playing);
   app.touchControls.setVisible(playing && usingTouch && !app.craftingPanel.isOpen());
 }
@@ -95,7 +98,25 @@ function saveCurrentGame(app) {
   if (savedAt) app.state.lastSavedAt = savedAt;
 }
 
+/**
+ * Điện thoại: thử vào toàn màn hình và khoá màn hình ngang (Android hỗ trợ; iOS thì bỏ qua,
+ * khi đó lớp "Xoay ngang điện thoại nhé!" trong CSS sẽ nhắc người chơi). Phải gọi trong lúc người chơi vừa chạm.
+ */
+function requestLandscape(app) {
+  if (app.input.device !== DEVICES.TOUCH) return;
+  try {
+    const root = document.documentElement;
+    const fullscreen = document.fullscreenElement ? Promise.resolve() : root.requestFullscreen?.({ navigationUI: 'hide' });
+    Promise.resolve(fullscreen)
+      .then(() => window.screen.orientation?.lock?.('landscape'))
+      .catch(() => {});
+  } catch {
+    // Trình duyệt không cho thì thôi, vẫn chơi bình thường.
+  }
+}
+
 function startSession(app, game) {
+  requestLandscape(app);
   fitCameraToViewport(game.camera, app.viewport);
   snapCameraToTarget(game.camera, game.player, game.world);
   app.state.game = game;
@@ -258,6 +279,7 @@ function readControls(app) {
   controls.aimX = aim ? aim.x : 0;
   controls.aimY = aim ? aim.y : 0;
   controls.wantsSprint = input.wantsSprint();
+  controls.autoAim = input.device === DEVICES.TOUCH; // điện thoại không ngắm tay được → tự ngắm
 
   const primaryHeld = input.isFireHeld();
   controls.primaryPressed = primaryHeld && !app.wasPrimaryHeld;
@@ -287,6 +309,7 @@ function handlePlayerActions(app) {
   if (input.wasActionPressed('build')) cycleBuildSelection(game);
   if (input.wasActionPressed('reload')) startReload(game);
   updateBuildGhost(game, app.controls);
+  updateFarmTarget(game, app.controls);
   if (input.wasActionPressed('interact')) performInteraction(game, findInteraction(game, app.interaction));
   usePrimaryAction(game, app.controls);
 }
@@ -311,6 +334,8 @@ function simulateWorld(app, deltaSeconds) {
   updateTraps(game);
   updatePickups(game, deltaSeconds);
   updateRegrowth(game, deltaSeconds);
+  updateFarming(game, deltaSeconds);
+  updateHusbandry(game, deltaSeconds);
   updateHitShakes(game, deltaSeconds);
   updateStructureTimers(game, deltaSeconds);
 }
@@ -363,7 +388,10 @@ function updateHudInfo(app) {
   findInteraction(game, app.interaction);
   app.hudInfo.interactionLabel = app.interaction.label;
   app.hudInfo.isTouch = app.input.device === DEVICES.TOUCH;
-  app.touchControls.setInteractLabel(app.interaction.kind === INTERACTION.PLACE ? 'Đặt' : 'Dùng');
+  if (!app.hudInfo.isTouch) return;
+  app.touchControls.setInteractLabel(app.interaction.kind === INTERACTION.NONE ? 'Dùng' : app.interaction.label);
+  app.touchControls.setPrimaryLabel(getPrimaryActionLabel(game));
+  app.touchControls.setReloadVisible(isHoldingGun(game));
 }
 
 function update(app, deltaSeconds) {
@@ -407,6 +435,7 @@ function createApp() {
       aimX: 0,
       aimY: 0,
       hasAim: false,
+      autoAim: false,
       wantsSprint: false,
       primaryHeld: false,
       primaryPressed: false,
@@ -439,6 +468,11 @@ function bindWindowEvents(app) {
     if (isPlaying(app.state)) changeScreen(app.state, SCREENS.PAUSED);
   });
   window.addEventListener('pagehide', () => saveCurrentGame(app));
+
+  // Người chơi chọn "Vẫn chơi màn dọc" thì không nhắc xoay ngang nữa (trong lần mở trang này).
+  document.getElementById('allow-portrait-button').addEventListener('click', () => {
+    document.body.classList.add('allow-portrait');
+  });
 
   // Trình duyệt chỉ cho phát tiếng sau lần chạm/bấm đầu tiên.
   const unlockAudio = () => app.audio.unlock();

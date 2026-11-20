@@ -1,8 +1,8 @@
-// Hình vẽ nhân vật và sinh vật bằng canvas: người chơi, zombie (ngố, không đáng sợ), thỏ, hươu, lợn rừng.
+// Hình vẽ nhân vật và sinh vật bằng canvas: người chơi, zombie (ngố, không đáng sợ), thỏ, hươu, lợn rừng, gà, cừu, bò.
 // Mọi hàm vẽ có dạng drawX(ctx, entity, frame) với frame = { timeSeconds, reducedMotion, game }.
 // Hình cơ bản ở render/shapes.js, icon đồ cầm tay ở render/worldSprites.js; *_SHAPE chỉ là tỉ lệ hình vẽ.
 
-import { COLORS, COMBAT, ITEMS } from '../config.js';
+import { COLORS, COMBAT, ITEMS, HUSBANDRY } from '../config.js';
 import { fillCircle, fillEllipse, drawSoftShadow, drawHealthBar } from './shapes.js';
 import { drawItemIcon } from './worldSprites.js';
 
@@ -342,9 +342,115 @@ function drawBoar(ctx, boar, frame) {
   drawHurtFlash(ctx, boar, x, y);
 }
 
-const ANIMAL_DRAWERS = { rabbit: drawRabbit, deer: drawDeer, boar: drawBoar };
+// =====================================================================
+// Vật nuôi (kích thước theo radius nên con non tự nhỏ lại)
+// =====================================================================
+
+/** Điểm phía trước thân theo hướng nhìn, cách tâm distance lần bán kính. */
+function pointAhead(animal, x, y, distance) {
+  return { x: x + animal.facingX * animal.radius * distance, y: y + animal.facingY * animal.radius * distance };
+}
+
+function drawChicken(ctx, chicken, frame) {
+  const { radius, facingX, facingY } = chicken;
+  const x = chicken.x;
+  const y = chicken.y - hopOffset(chicken, frame, radius * 0.35);
+  drawSoftShadow(ctx, chicken.x, chicken.y + radius * 0.8, radius * 0.9, radius * 0.3);
+  const tail = pointAhead(chicken, x, y, -0.85);
+  fillCircle(ctx, tail.x, tail.y - radius * 0.35, radius * 0.38, COLORS.chickenOutline);
+  drawOutlinedBody(ctx, x, y, radius, COLORS.chicken, COLORS.chickenOutline, 0.14);
+  fillEllipse(ctx, x - facingY * radius * 0.55, y + facingX * radius * 0.55 * 0.4, radius * 0.38, radius * 0.24, COLORS.chickenOutline);
+  for (const offset of [-0.22, 0, 0.22]) fillCircle(ctx, x + offset * radius, y - radius * 0.95, radius * 0.2, COLORS.chickenComb);
+  const beak = pointAhead(chicken, x, y, 0.85);
+  fillEllipse(ctx, beak.x, beak.y + radius * 0.1, radius * 0.24, radius * 0.17, COLORS.beak);
+  const eyeRadius = radius * 0.14;
+  drawEyes(ctx, x, y - radius * 0.1, radius, facingX, facingY, eyeRadius, eyeRadius);
+  drawHurtFlash(ctx, chicken, x, y);
+}
+
+/** Cừu: thân là một "đám mây" len; xén rồi thì còn thân trần hồng nhạt nhỏ hơn. */
+const WOOL_PUFFS = [
+  [-0.55, -0.25],
+  [0.55, -0.25],
+  [-0.4, 0.4],
+  [0.4, 0.4],
+  [0, -0.55],
+  [0, 0.1],
+];
+
+function drawSheep(ctx, sheep, frame) {
+  const { radius, facingX, facingY } = sheep;
+  const x = sheep.x;
+  const y = sheep.y - hopOffset(sheep, frame, radius * 0.2);
+  drawSoftShadow(ctx, sheep.x, sheep.y + radius * 0.8, radius, radius * 0.32);
+  if (sheep.isSheared) {
+    drawOutlinedBody(ctx, x, y, radius * 0.8, COLORS.sheepSheared, COLORS.sheepShearedOutline, 0.12);
+  } else {
+    for (const [puffX, puffY] of WOOL_PUFFS) fillCircle(ctx, x + puffX * radius, y + puffY * radius + 2, radius * 0.55, COLORS.sheepWoolShade);
+    for (const [puffX, puffY] of WOOL_PUFFS) fillCircle(ctx, x + puffX * radius, y + puffY * radius, radius * 0.55, COLORS.sheepWool);
+  }
+  const head = pointAhead(sheep, x, y, 0.75);
+  const headRadius = radius * 0.48;
+  for (const side of [-1, 1]) {
+    fillEllipse(ctx, head.x + side * headRadius * 1.05, head.y - headRadius * 0.3, headRadius * 0.45, headRadius * 0.25, COLORS.sheepFace, side * 0.4);
+  }
+  fillEllipse(ctx, head.x, head.y, headRadius, headRadius * 1.1, COLORS.sheepFace);
+  if (!sheep.isSheared) fillCircle(ctx, head.x, head.y - headRadius * 0.85, headRadius * 0.55, COLORS.sheepWool);
+  const eyeRadius = headRadius * 0.2;
+  drawEyes(ctx, head.x, head.y, headRadius, facingX, facingY, eyeRadius, eyeRadius);
+  drawHurtFlash(ctx, sheep, x, y);
+}
+
+const COW_SPOTS = [
+  [-0.45, -0.3, 0.3],
+  [0.35, 0.25, 0.26],
+  [-0.1, 0.5, 0.18],
+];
+
+function drawCow(ctx, cow, frame) {
+  const { radius, facingX, facingY } = cow;
+  const x = cow.x;
+  const y = cow.y - hopOffset(cow, frame, radius * 0.15);
+  drawSoftShadow(ctx, cow.x, cow.y + radius * 0.8, radius, radius * 0.32);
+  drawOutlinedBody(ctx, x, y, radius, COLORS.cow, COLORS.cowOutline, 0.1);
+  for (const [spotX, spotY, spotRadius] of COW_SPOTS) {
+    fillEllipse(ctx, x + spotX * radius, y + spotY * radius, spotRadius * radius, spotRadius * radius * 0.8, COLORS.cowSpot);
+  }
+  const head = pointAhead(cow, x, y, 0.8);
+  const headRadius = radius * 0.5;
+  for (const side of [-1, 1]) {
+    fillCircle(ctx, head.x + side * headRadius * 0.6, head.y - headRadius * 0.9, headRadius * 0.22, COLORS.horn);
+    fillEllipse(ctx, head.x + side * headRadius * 1.05, head.y - headRadius * 0.35, headRadius * 0.4, headRadius * 0.22, COLORS.cowSpot, side * 0.3);
+  }
+  drawOutlinedBody(ctx, head.x, head.y, headRadius, COLORS.cow, COLORS.cowOutline, 0.12);
+  const snout = pointAhead(cow, head.x, head.y, 0.55);
+  fillEllipse(ctx, snout.x, snout.y + headRadius * 0.35, headRadius * 0.62, headRadius * 0.42, COLORS.cowSnout);
+  for (const side of [-1, 1]) fillCircle(ctx, snout.x + side * headRadius * 0.22, snout.y + headRadius * 0.35, headRadius * 0.08, COLORS.cowOutline);
+  const eyeRadius = headRadius * 0.2;
+  drawEyes(ctx, head.x, head.y - headRadius * 0.2, headRadius, facingX, facingY, eyeRadius, eyeRadius);
+  drawHurtFlash(ctx, cow, x, y);
+}
+
+/** Trái tim hồng nhỏ (hai hình tròn + đuôi bo tròn) — dấu hiệu vật nuôi đang yêu. */
+function drawHeart(ctx, x, y, size) {
+  ctx.beginPath();
+  ctx.moveTo(x, y + size * 0.9);
+  ctx.bezierCurveTo(x - size * 1.3, y, x - size * 0.7, y - size * 0.9, x, y - size * 0.3);
+  ctx.bezierCurveTo(x + size * 0.7, y - size * 0.9, x + size * 1.3, y, x, y + size * 0.9);
+  ctx.fillStyle = COLORS.heart;
+  ctx.fill();
+}
+
+function drawLoveHeart(ctx, animal, frame) {
+  if (animal.loveTimer <= 0) return;
+  const bob = frame.reducedMotion ? 0 : Math.sin(frame.timeSeconds * HUSBANDRY.heartBobSpeed) * 2;
+  drawHeart(ctx, animal.x, animal.y - animal.radius * 1.9 + bob, 6);
+}
+
+const ANIMAL_DRAWERS = { rabbit: drawRabbit, deer: drawDeer, boar: drawBoar, chicken: drawChicken, sheep: drawSheep, cow: drawCow };
 
 export function drawAnimal(ctx, animal, frame) {
   ANIMAL_DRAWERS[animal.species](ctx, animal, frame);
+  drawLoveHeart(ctx, animal, frame);
   drawCreatureHealthBar(ctx, animal);
 }

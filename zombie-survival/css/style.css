@@ -51,7 +51,10 @@
   /* Điều khiển cảm ứng (JS ghi đè theo Cài đặt) */
   --touch-scale: 1;
   --stick-radius: 56px;
-  --touch-button-size: calc(64px * var(--touch-scale));
+  --touch-button-size: calc(60px * var(--touch-scale));
+  --touch-primary-size: calc(92px * var(--touch-scale));
+  --touch-small-size: calc(52px * var(--touch-scale));
+  --touch-gap: calc(10px * var(--touch-scale));
   --stick-margin: calc(28px * var(--touch-scale));
   --hotbar-clearance: 92px; /* chừa chỗ cho thanh nhanh ở đáy màn hình dọc */
 
@@ -1057,20 +1060,14 @@ body.is-touch .slot-key {
   touch-action: none;
 }
 
+/* Vùng cần di chuyển: nửa trái màn hình (chạm đâu cần hiện ở đó) */
 .joystick-zone {
   position: absolute;
   top: 0;
   bottom: 0;
+  left: 0;
   width: 50%;
   touch-action: none;
-}
-
-.joystick-zone--move {
-  left: 0;
-}
-
-.joystick-zone--aim {
-  right: 0;
 }
 
 /* Gốc cần: khi không chạm thì nằm ở góc dưới (trên thanh nhanh); khi chạm thì JS đặt left/top theo ngón tay. */
@@ -1094,17 +1091,9 @@ body.is-touch .slot-key {
   left: calc(var(--safe-left) + var(--stick-margin) + var(--stick-radius));
 }
 
-.joystick-zone--aim .joystick-base {
-  left: calc(100% - var(--safe-right) - var(--stick-margin) - var(--stick-radius));
-}
-
 .joystick-base.is-active {
   opacity: 1;
   transition: none;
-}
-
-.joystick-base--aim {
-  border-color: rgba(255, 196, 176, 0.8);
 }
 
 .joystick-knob {
@@ -1115,15 +1104,19 @@ body.is-touch .slot-key {
   box-shadow: 0 4px 10px rgba(74, 64, 88, 0.18);
 }
 
-/* Các nút hành động: lưới 2x2 phía trên cần ngắm.
-   Chừa thêm nửa bán kính cần để núm ngắm kéo lên không chui ngay xuống dưới nút. */
-.touch-buttons {
+/* Cụm nút bên phải: nút lớn ở góc, các nút nhỏ xếp hình vòng cung quanh nó (vừa tầm ngón cái). */
+.touch-actions {
   position: absolute;
-  right: calc(var(--safe-right) + 16px);
-  bottom: calc(var(--safe-bottom) + var(--hotbar-clearance) + var(--stick-margin) + var(--stick-radius) * 2.5 + 8px);
-  display: grid;
-  grid-template-columns: repeat(2, var(--touch-button-size));
-  gap: calc(12px * var(--touch-scale));
+  right: calc(var(--safe-right) + 18px);
+  bottom: calc(var(--safe-bottom) + var(--hotbar-clearance) + 18px);
+  width: calc(var(--touch-primary-size) + var(--touch-button-size) + var(--touch-small-size) + var(--touch-gap) * 2);
+  height: calc(var(--touch-primary-size) + var(--touch-small-size) * 1.6 + var(--touch-gap) * 2);
+  pointer-events: none;
+}
+
+.touch-actions .touch-button {
+  position: absolute;
+  pointer-events: auto;
 }
 
 .touch-button {
@@ -1141,9 +1134,55 @@ body.is-touch .slot-key {
   touch-action: none;
 }
 
+.touch-button--primary {
+  right: 0;
+  bottom: 0;
+  width: var(--touch-primary-size);
+  height: var(--touch-primary-size);
+  background: rgba(255, 214, 196, 0.92);
+  border-color: rgba(255, 180, 160, 0.95);
+  font-size: calc(1rem * var(--touch-scale));
+}
+
 .touch-button--interact {
+  right: calc(var(--touch-primary-size) + var(--touch-gap));
+  bottom: calc(var(--touch-gap) * 0.5);
   background: rgba(186, 230, 200, 0.92);
   border-color: rgba(140, 205, 165, 0.95);
+  font-size: calc(0.68rem * var(--touch-scale));
+  padding: 0 4px;
+}
+
+.touch-button--interact.is-idle {
+  font-size: calc(0.78rem * var(--touch-scale));
+}
+
+.touch-button--build,
+.touch-button--craft,
+.touch-button--reload {
+  width: var(--touch-small-size);
+  height: var(--touch-small-size);
+  font-size: calc(0.72rem * var(--touch-scale));
+}
+
+.touch-button--craft {
+  right: calc((var(--touch-primary-size) - var(--touch-small-size)) / 2);
+  bottom: calc(var(--touch-primary-size) + var(--touch-gap));
+}
+
+.touch-button--build {
+  right: calc(var(--touch-primary-size) + var(--touch-gap) * 0.2);
+  bottom: calc(var(--touch-primary-size) * 0.82 + var(--touch-gap));
+}
+
+.touch-button--reload {
+  right: calc(var(--touch-primary-size) + var(--touch-button-size) + var(--touch-gap) * 2);
+  bottom: calc(var(--touch-gap) * 0.5 + (var(--touch-button-size) - var(--touch-small-size)) / 2);
+  background: rgba(255, 241, 201, 0.92);
+}
+
+.touch-button[hidden] {
+  display: none;
 }
 
 .touch-button.is-pressed {
@@ -1155,10 +1194,6 @@ body.is-touch .slot-key {
 @media (orientation: landscape) and (max-height: 520px) {
   :root {
     --hotbar-clearance: 0px;
-  }
-
-  .touch-buttons {
-    bottom: calc(var(--safe-bottom) + var(--stick-margin) + var(--stick-radius) * 2 + 16px);
   }
 
   .menu-card {
@@ -1181,6 +1216,73 @@ body.is-touch .slot-key {
 
   .toast {
     top: calc(var(--safe-top) + var(--minimap-size) + 64px);
+  }
+}
+
+/* ========== Nhắc xoay ngang điện thoại ========== */
+.rotate-hint {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: calc(16px + var(--safe-top)) 16px calc(16px + var(--safe-bottom));
+  background: var(--backdrop);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+}
+
+@media (orientation: portrait) {
+  body.is-touch.is-playing:not(.allow-portrait) .rotate-hint {
+    display: flex;
+  }
+}
+
+.rotate-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  max-width: 320px;
+  padding: 24px;
+  border: 2px solid var(--card-border);
+  border-radius: var(--radius-card);
+  background: var(--card-bg);
+  box-shadow: var(--shadow-soft);
+  text-align: center;
+}
+
+.rotate-title {
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 900;
+}
+
+.rotate-card .muted-text {
+  margin: 0;
+}
+
+/* Điện thoại nhỏ xoay qua xoay lại */
+.rotate-phone {
+  width: 46px;
+  height: 78px;
+  border: 5px solid var(--text);
+  border-radius: 12px;
+  animation: rotate-phone 2.2s ease-in-out infinite;
+}
+
+@keyframes rotate-phone {
+  0%,
+  20% {
+    transform: rotate(0deg);
+  }
+  50%,
+  80% {
+    transform: rotate(-90deg);
+  }
+  100% {
+    transform: rotate(0deg);
   }
 }
 

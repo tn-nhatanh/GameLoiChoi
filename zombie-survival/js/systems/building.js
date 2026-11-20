@@ -6,6 +6,7 @@ import { STRUCTURES, BUILD } from '../config.js';
 import { TILE, getTile, getObjectAtTile, getStructureAtTile, isInsideMap, tileIndexOf, pixelToTile } from '../world/mapGen.js';
 import { circleOverlapsSquare } from '../world/collision.js';
 import { markFlowFieldDirty } from './pathfinding.js';
+import { isClearable, clearObject } from './gathering.js';
 import { removeItem, countItem, takeFromSlot } from './inventory.js';
 import { getHeldStructureType } from './items.js';
 import { removeWhere } from '../utils/math.js';
@@ -61,11 +62,20 @@ function isTileOccupiedByCreature(game, tileX, tileY) {
   return overlaps(game.player) || game.zombies.some(overlaps) || game.animals.some(overlaps);
 }
 
-/** Đặt được khi: trong map, trên đất, không có cây/đá/bụi, chưa có công trình, không đè lên sinh vật. */
+/** Ô có cây/đá/bụi chắn chỗ xây không (cỏ, hoa, nấm... thì dọn đi được; gốc cây đã chặt cũng không chắn). */
+function hasObjectInTheWay(world, tileX, tileY) {
+  const object = getObjectAtTile(world, tileX, tileY);
+  return Boolean(object) && !object.isDepleted && !isClearable(object);
+}
+
+/** Đặt được khi: trong map, trên đất, không có cây/đá/bụi, chưa có công trình/ruộng, không đè lên sinh vật. */
 export function canPlaceStructure(game, structureType, tileX, tileY) {
   const world = game.world;
   if (!isInsideMap(world, tileX, tileY) || getTile(world, tileX, tileY) === TILE.WATER) return false;
-  if (getObjectAtTile(world, tileX, tileY) || getStructureAtTile(world, tileX, tileY)) return false;
+  if (hasObjectInTheWay(world, tileX, tileY) || getStructureAtTile(world, tileX, tileY)) return false;
+  if (world.plotByTile.has(tileIndexOf(world, tileX, tileY))) return false;
+  const object = getObjectAtTile(world, tileX, tileY);
+  if (object?.isDepleted && object.type === 'tree') return false; // gốc cây vẫn còn đó
   if (STRUCTURES[structureType].blocks === 'none') return true;
   return !isTileOccupiedByCreature(game, tileX, tileY);
 }
@@ -107,6 +117,8 @@ export function placeHeldStructure(game) {
     return false;
   }
   takeFromSlot(game.inventory, game.player.selectedSlot, 1);
+  const object = getObjectAtTile(game.world, ghost.tileX, ghost.tileY);
+  if (object) clearObject(game, object); // dọn cỏ hoa dưới chân công trình
   const structure = addStructure(game, ghost.structureType, ghost.tileX, ghost.tileY);
   emit(game, 'particles', { preset: 'buildDust', x: structure.x, y: structure.centerY });
   emit(game, 'sound', { name: 'place' });

@@ -15,6 +15,8 @@ import { createDayNightState, isNight, getDayNumber } from './systems/dayNight.j
 import { createFlowField } from './systems/pathfinding.js';
 import { addStructure } from './systems/building.js';
 import { applySavedResourceState } from './systems/gathering.js';
+import { serializePlots, restorePlots } from './systems/farming.js';
+import { serializeFarmAnimals, restoreFarmAnimals } from './systems/husbandry.js';
 
 export const SCREENS = Object.freeze({
   MAIN_MENU: 'mainMenu',
@@ -81,6 +83,9 @@ function createGameSession(seedText, worldId) {
     pickups: [],
     bullets: createBulletPool(),
     regrowingObjects: [], // cây/đá/bụi đang chờ mọc lại
+    fruitingTrees: [], // cây táo đang chờ ra quả
+    plots: [], // ô ruộng đã cày (systems/farming.js)
+    farmTarget: { isActive: false, tileX: 0, tileY: 0, action: null }, // ô đang nhắm để cày / gieo
     recentlyHitObjects: [], // cây/đá đang rung vì vừa bị đánh
     flowField: createFlowField(world),
     pathStep: { tileX: 0, tileY: 0 }, // object dùng lại khi zombie hỏi đường
@@ -134,6 +139,8 @@ export function createSaveSnapshot(game) {
     ]),
     respawnBedIndex: game.structures.indexOf(game.respawnBed),
     objects: changedObjects,
+    plots: serializePlots(game),
+    farmAnimals: serializeFarmAnimals(game),
   };
 }
 
@@ -177,7 +184,11 @@ export function restoreGameSession(snapshot) {
     game.inventory = deserializeInventory(snapshot.inventory); // tự bỏ qua vật phẩm không còn tồn tại
     restoreObjects(game, snapshot.objects);
     restoreStructures(game, snapshot.structures, snapshot.respawnBedIndex);
-    spawnInitialAnimals(game);
+    restorePlots(game, snapshot.plots);
+    // Bản lưu cũ (trước khi có vật nuôi) thì rải đàn vật nuôi mới; còn lại thì lấy đúng đàn đã nuôi.
+    const hasSavedFarm = Array.isArray(snapshot.farmAnimals);
+    spawnInitialAnimals(game, !hasSavedFarm);
+    if (hasSavedFarm) restoreFarmAnimals(game, snapshot.farmAnimals);
     return game;
   } catch {
     return null;

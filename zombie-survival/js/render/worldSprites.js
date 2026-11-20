@@ -1,4 +1,4 @@
-// Hình vẽ đồ vật trong thế giới: cây, đá, bụi quả (kể cả lúc đã khai thác), công trình, vật phẩm rơi, đạn,
+// Hình vẽ đồ vật trong thế giới: đá, bụi quả (kể cả lúc đã khai thác), công trình, vật phẩm rơi, đạn,
 // bóng mờ khi xây, và icon vật phẩm (dùng chung cho túi đồ, thanh nhanh, đồ cầm trên tay).
 // Mọi hình đều ghép từ render/shapes.js; *_SHAPE / số trong hàm vẽ là kích thước hình học, không ảnh hưởng gameplay.
 
@@ -21,31 +21,8 @@ const HIT_SHAKE = { speed: 70, amount: 2.5, seconds: 0.18 };
 const CRACK_HEALTH_RATIO = 0.5; // dưới nửa máu thì hiện vết nứt
 
 // =====================================================================
-// Cây, đá, bụi
+// Đá, bụi (cây và cỏ hoa ở render/floraSprites.js)
 // =====================================================================
-
-/** Cây (px ở tỉ lệ 1). Gốc toạ độ là chân thân cây. */
-const TREE_SHAPE = {
-  shadowWidth: 22,
-  shadowHeight: 8,
-  trunkWidth: 14,
-  trunkHeight: 24,
-  trunkCorner: 5,
-  trunkShadeX: 2,
-  trunkShadeWidth: 5,
-  canopyY: -38,
-  canopyRadius: 22,
-  sideLobeX: 15,
-  sideLobeY: 7,
-  sideLobeRadius: 15,
-  shadeDrop: 4,
-  highlightX: -8,
-  highlightY: -9,
-  highlightRadius: 8,
-  stumpWidth: 12,
-  stumpHeight: 9,
-  stumpTopHeight: 5,
-};
 
 const ROCK_SHAPE = {
   shadowWidth: 20,
@@ -89,44 +66,6 @@ const BUSH_SHAPE = {
 function hitShakeOffset(object, frame) {
   if (object.hitTimer <= 0 || frame.reducedMotion) return 0;
   return Math.sin(frame.timeSeconds * HIT_SHAKE.speed) * HIT_SHAKE.amount * (object.hitTimer / HIT_SHAKE.seconds);
-}
-
-function drawTreeStump(ctx) {
-  const shape = TREE_SHAPE;
-  drawSoftShadow(ctx, 0, 0, shape.shadowWidth * 0.7, shape.shadowHeight * 0.8);
-  fillRoundedRect(ctx, -shape.stumpWidth / 2, -shape.stumpHeight, shape.stumpWidth, shape.stumpHeight, 4, COLORS.trunk);
-  fillEllipse(ctx, 0, -shape.stumpHeight, shape.stumpWidth / 2, shape.stumpTopHeight / 2, COLORS.stump);
-  fillEllipse(ctx, 0, -shape.stumpHeight, shape.stumpWidth / 5, shape.stumpTopHeight / 5, COLORS.trunkShade);
-}
-
-/** Cây: thân bo góc nâu sữa, tán ba cụm tròn lắc lư nhẹ theo gió. Đã chặt thì còn gốc. */
-export function drawTree(ctx, tree, frame) {
-  const shape = TREE_SHAPE;
-  ctx.save();
-  ctx.translate(tree.x + hitShakeOffset(tree, frame), tree.y);
-  ctx.scale(tree.scale, tree.scale);
-  if (tree.isDepleted) {
-    drawTreeStump(ctx);
-    ctx.restore();
-    return;
-  }
-  const sway = frame.reducedMotion
-    ? 0
-    : Math.sin(frame.timeSeconds * RENDER.treeSwaySpeed + tree.swayPhase) * RENDER.treeSwayAmount;
-  drawSoftShadow(ctx, 0, 0, shape.shadowWidth, shape.shadowHeight);
-  fillRoundedRect(ctx, -shape.trunkWidth / 2, -shape.trunkHeight, shape.trunkWidth, shape.trunkHeight, shape.trunkCorner, COLORS.trunk);
-  fillRoundedRect(ctx, shape.trunkShadeX, -shape.trunkHeight, shape.trunkShadeWidth, shape.trunkHeight, shape.trunkCorner, COLORS.trunkShade);
-
-  ctx.translate(sway, shape.canopyY);
-  const lobes = [
-    [-shape.sideLobeX, shape.sideLobeY, shape.sideLobeRadius],
-    [shape.sideLobeX, shape.sideLobeY, shape.sideLobeRadius],
-    [0, 0, shape.canopyRadius],
-  ];
-  for (const [x, y, radius] of lobes) fillCircle(ctx, x, y + shape.shadeDrop, radius, COLORS.leavesShade);
-  for (const [x, y, radius] of lobes) fillCircle(ctx, x, y, radius, COLORS.leaves);
-  fillCircle(ctx, shape.highlightX, shape.highlightY, shape.highlightRadius, COLORS.leavesHighlight);
-  ctx.restore();
 }
 
 function drawRockBody(ctx) {
@@ -385,7 +324,108 @@ const ITEM_ICONS = {
       fillCircle(ctx, x + 3, -8, 3, COLORS.bulletOutline);
     }
   },
+  hoe: (ctx) => drawToolIcon(ctx, (c) => fillRoundedRect(c, -1, -14, 12, 5, 2.5, COLORS.tool)),
+  shears(ctx) {
+    for (const side of [-1, 1]) {
+      ctx.save();
+      ctx.rotate(side * 0.35);
+      fillRoundedRect(ctx, -2.2, -14, 4.4, 16, 2.2, COLORS.shearsBlade);
+      ctx.restore();
+      fillCircle(ctx, side * 6, 8, 5, COLORS.shearsHandle);
+      fillCircle(ctx, side * 6, 8, 2.2, '#ffffff');
+    }
+    fillCircle(ctx, 0, 0, 2, COLORS.tool);
+  },
+  wheatSeeds(ctx) {
+    for (const [x, y, angle] of [[-6, 2, -0.5], [0, -4, 0.2], [6, 3, 0.7], [-1, 7, -0.2], [5, -8, -0.6]]) {
+      fillEllipse(ctx, x, y, 2.6, 4, COLORS.wheatShade, angle);
+    }
+  },
+  wheat(ctx) {
+    for (const tilt of [-0.3, 0, 0.3]) {
+      ctx.save();
+      ctx.rotate(tilt);
+      fillRoundedRect(ctx, -1, -4, 2, 18, 1, COLORS.wheatShade);
+      for (const y of [-13, -8, -3]) {
+        fillEllipse(ctx, -2.5, y, 2.4, 3.8, COLORS.wheat, -0.4);
+        fillEllipse(ctx, 2.5, y, 2.4, 3.8, COLORS.wheat, 0.4);
+      }
+      ctx.restore();
+    }
+  },
+  carrot(ctx) {
+    ctx.save();
+    ctx.rotate(0.6);
+    for (const tilt of [-0.4, 0, 0.4]) fillEllipse(ctx, tilt * 8, -12, 2.6, 6, COLORS.carrotLeaf, tilt);
+    ctx.beginPath();
+    ctx.ellipse(0, 2, 6, 13, 0, 0, Math.PI * 2);
+    ctx.fillStyle = COLORS.carrot;
+    ctx.fill();
+    for (const y of [-2, 4, 9]) fillRoundedRect(ctx, -4, y, 4, 1.6, 0.8, COLORS.carrotShade);
+    ctx.restore();
+  },
+  potato(ctx) {
+    fillEllipse(ctx, 0, 2, 13, 10, COLORS.potatoShade, 0.2);
+    fillEllipse(ctx, 0, 0, 13, 10, COLORS.potato, 0.2);
+    for (const [x, y] of [[-5, -2], [4, 3], [6, -4]]) fillCircle(ctx, x, y, 1.3, COLORS.potatoShade);
+  },
+  bakedPotato(ctx) {
+    fillEllipse(ctx, 0, 2, 13, 10, COLORS.potatoShade, 0.2);
+    fillEllipse(ctx, 0, 0, 13, 10, COLORS.bakedPotato, 0.2);
+    fillEllipse(ctx, 1, -1, 6, 3.5, COLORS.flowerCenter, 0.2);
+    fillEllipse(ctx, 2, -2, 2.5, 1.4, '#fff6d8', 0.2);
+  },
+  bread(ctx) {
+    fillRoundedRect(ctx, -14, -6, 28, 16, 8, COLORS.bread);
+    fillRoundedRect(ctx, -13, -9, 26, 13, 7, COLORS.breadTop);
+    for (const x of [-6, 0, 6]) fillRoundedRect(ctx, x - 1, -6, 2.5, 7, 1.2, COLORS.bread);
+  },
+  apple(ctx) {
+    fillRoundedRect(ctx, -1, -15, 2.5, 7, 1.2, COLORS.trunk);
+    fillEllipse(ctx, 5, -12, 5, 2.6, COLORS.appleLeaf, -0.4);
+    fillCircle(ctx, -4, 1, 10, COLORS.apple);
+    fillCircle(ctx, 4, 1, 10, COLORS.apple);
+    fillCircle(ctx, -5, -3, 2.6, '#ffffff');
+  },
+  mushroom(ctx) {
+    fillRoundedRect(ctx, -4, -2, 8, 14, 3.5, COLORS.mushroomStem);
+    ctx.beginPath();
+    ctx.ellipse(0, -2, 13, 11, 0, Math.PI, 0);
+    ctx.closePath();
+    ctx.fillStyle = COLORS.mushroomCap;
+    ctx.fill();
+    fillCircle(ctx, -5, -7, 2.4, COLORS.mushroomSpot);
+    fillCircle(ctx, 4, -9, 1.8, COLORS.mushroomSpot);
+  },
+  egg(ctx) {
+    fillEllipse(ctx, 0, 2, 10, 13, COLORS.eggShade);
+    fillEllipse(ctx, 0, 0, 10, 13, COLORS.egg);
+    fillEllipse(ctx, -3, -4, 2.5, 3.5, '#ffffff');
+  },
+  friedEgg(ctx) {
+    for (const [x, y, radius] of [[-5, -2, 9], [5, -1, 9], [0, 5, 9], [0, -6, 8]]) fillCircle(ctx, x, y, radius, COLORS.egg);
+    fillCircle(ctx, 0, 0, 6, COLORS.yolk);
+    fillCircle(ctx, -2, -2, 1.8, '#ffffff');
+  },
+  wool(ctx) {
+    for (const [x, y, radius] of [[-7, 3, 7], [7, 3, 7], [0, -4, 8], [0, 6, 7]]) fillCircle(ctx, x, y + 1.5, radius, COLORS.woolShade);
+    for (const [x, y, radius] of [[-7, 3, 7], [7, 3, 7], [0, -4, 8], [0, 6, 7]]) fillCircle(ctx, x, y, radius, COLORS.wool);
+  },
+  bucket: (ctx) => drawBucketIcon(ctx, false),
+  milk: (ctx) => drawBucketIcon(ctx, true),
 };
+
+function drawBucketIcon(ctx, isFull) {
+  ctx.lineWidth = 2.5;
+  ctx.strokeStyle = COLORS.bucketBand;
+  ctx.beginPath();
+  ctx.arc(0, -6, 11, Math.PI, 0);
+  ctx.stroke();
+  fillRoundedRect(ctx, -12, -7, 24, 20, 6, COLORS.bucket);
+  fillRoundedRect(ctx, -12, -1, 24, 3, 1.5, COLORS.bucketBand);
+  fillRoundedRect(ctx, -12, 8, 24, 3, 1.5, COLORS.bucketBand);
+  fillEllipse(ctx, 0, -7, 12, 3.5, isFull ? COLORS.milk : COLORS.bucketBand);
+}
 
 /** Vẽ icon vật phẩm, tâm tại (x, y), cạnh `size` px. */
 export function drawItemIcon(ctx, itemId, x, y, size, timeSeconds = 0) {

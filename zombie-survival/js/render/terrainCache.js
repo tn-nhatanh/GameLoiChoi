@@ -23,6 +23,8 @@ const CHUNK_PADDING_TILES = 2;
 const SEAM_OVERLAP = 1;
 /** "Muối" cho hash hoạ tiết, để không trùng với hash của noise địa hình. */
 const DECORATION_SALT = 0x5bd1e995;
+const MEADOW_SALT = 0x3c6ef372; // hash riêng cho chấm hoa li ti và lá súng
+const MEADOW_COLOR_SALT = 0x6a09e667;
 
 /** Hình dáng hoạ tiết, tính theo cạnh ô (chỉ để trang trí). */
 const DECORATION_SHAPE = {
@@ -33,6 +35,11 @@ const DECORATION_SHAPE = {
   waveWidth: 0.16,
   waveLineWidth: 2.5,
   sandDotRadius: 0.04,
+  meadowDotRadius: 0.035,
+  meadowSpread: 0.12, // ba chấm hoa nằm quanh một điểm
+  lilyPadRadius: 0.16,
+  lilyNotch: 0.5, // khe hở trên lá súng (radian)
+  lilyFlowerRadius: 0.05,
 };
 
 function drawTerrainLayer(ctx, world, layer, fromX, fromY, toX, toY) {
@@ -77,6 +84,38 @@ function drawWave(ctx, x, y, size) {
   ctx.quadraticCurveTo(x + halfWidth / 2, y + halfWidth / 2, x + halfWidth, y);
 }
 
+/** Ô nước sát bờ (có ô đất kề bên) — chỗ lá súng mọc. */
+function isShoreWater(world, tileX, tileY) {
+  return getTile(world, tileX, tileY) === TILE.WATER && !isOpenWater(world, tileX, tileY);
+}
+
+/** Ba chấm hoa li ti trên cỏ (mỗi ô một màu) — vẽ sẵn vào nền nên gần như không tốn gì. */
+function addMeadowDots(paths, world, tileX, tileY, x, y) {
+  const size = world.tileSize;
+  const colorIndex = Math.floor(hash2D(tileX, tileY, world.seed ^ MEADOW_COLOR_SALT) * paths.meadowDots.length);
+  const path = paths.meadowDots[colorIndex];
+  const radius = DECORATION_SHAPE.meadowDotRadius * size;
+  const spread = DECORATION_SHAPE.meadowSpread * size;
+  for (const [offsetX, offsetY] of [[0, 0], [spread, spread * 0.4], [-spread * 0.6, spread * 0.7]]) {
+    path.moveTo(x + offsetX + radius, y + offsetY);
+    path.arc(x + offsetX, y + offsetY, radius, 0, Math.PI * 2);
+  }
+}
+
+/** Lá súng tròn có một khe hở, thỉnh thoảng có hoa hồng nhỏ. */
+function addLilyPad(paths, world, x, y, hasFlower) {
+  const size = world.tileSize;
+  const radius = DECORATION_SHAPE.lilyPadRadius * size;
+  const notch = DECORATION_SHAPE.lilyNotch;
+  paths.lilyPads.moveTo(x, y);
+  paths.lilyPads.arc(x, y, radius, notch / 2, Math.PI * 2 - notch / 2);
+  paths.lilyPads.closePath();
+  if (!hasFlower) return;
+  const flowerRadius = DECORATION_SHAPE.lilyFlowerRadius * size;
+  paths.lilyFlowers.moveTo(x - radius * 0.3 + flowerRadius, y);
+  paths.lilyFlowers.arc(x - radius * 0.3, y, flowerRadius, 0, Math.PI * 2);
+}
+
 /** Chọn hoạ tiết cho một ô dựa trên hash cố định → cùng seed luôn cùng hoạ tiết. */
 function addDecoration(paths, world, tileX, tileY) {
   const chance = hash2D(tileX, tileY, world.seed ^ DECORATION_SALT);
@@ -86,6 +125,14 @@ function addDecoration(paths, world, tileX, tileY) {
   const y = (tileY + 0.5) * size + (hash2D(tileX, tileY, world.seed + 2) * 2 - 1) * maxOffset;
   const tile = getTile(world, tileX, tileY);
 
+  const meadowChance = hash2D(tileX, tileY, world.seed ^ MEADOW_SALT);
+  if (tile === TILE.GRASS && meadowChance < RENDER.decorationChance.meadowDots) {
+    addMeadowDots(paths, world, tileX, tileY, (tileX + 0.5) * size, (tileY + 0.5) * size);
+  }
+  if (meadowChance < RENDER.decorationChance.lilyPad && isShoreWater(world, tileX, tileY)) {
+    addLilyPad(paths, world, x, y, chance < RENDER.decorationChance.lilyFlower);
+    return;
+  }
   if (tile >= TILE.GRASS && chance < RENDER.decorationChance.grassTuft) drawGrassTuft(paths.tufts, x, y, size);
   else if (tile === TILE.SAND && chance < RENDER.decorationChance.sandDot) {
     const radius = DECORATION_SHAPE.sandDotRadius * size;
@@ -97,7 +144,14 @@ function addDecoration(paths, world, tileX, tileY) {
 }
 
 function drawDecorations(ctx, world, fromX, fromY, toX, toY) {
-  const paths = { tufts: new Path2D(), sandDots: new Path2D(), waves: new Path2D() };
+  const paths = {
+    tufts: new Path2D(),
+    sandDots: new Path2D(),
+    waves: new Path2D(),
+    meadowDots: COLORS.meadowDots.map(() => new Path2D()),
+    lilyPads: new Path2D(),
+    lilyFlowers: new Path2D(),
+  };
   for (let tileY = fromY; tileY <= toY; tileY++) {
     for (let tileX = fromX; tileX <= toX; tileX++) addDecoration(paths, world, tileX, tileY);
   }
@@ -111,6 +165,14 @@ function drawDecorations(ctx, world, fromX, fromY, toX, toY) {
   ctx.stroke(paths.waves);
   ctx.fillStyle = COLORS.sandDot;
   ctx.fill(paths.sandDots);
+  paths.meadowDots.forEach((path, index) => {
+    ctx.fillStyle = COLORS.meadowDots[index];
+    ctx.fill(path);
+  });
+  ctx.fillStyle = COLORS.lilyPad;
+  ctx.fill(paths.lilyPads);
+  ctx.fillStyle = COLORS.lilyFlower;
+  ctx.fill(paths.lilyFlowers);
 }
 
 /** Vẽ một khối mặt đất ra canvas riêng, ở độ phân giải `resolution` (pixel thật / pixel thế giới). */

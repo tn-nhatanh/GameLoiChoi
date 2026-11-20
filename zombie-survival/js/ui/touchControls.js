@@ -1,6 +1,6 @@
-// Điều khiển cảm ứng: cần di chuyển (nửa trái), cần ngắm kiêm bắn (nửa phải), các nút tròn hành động.
-// Dùng Pointer Events và theo dõi từng pointerId, nên nhiều ngón tay hoạt động cùng lúc.
-// Đẩy dữ liệu vào input.js; phần tử DOM nằm trong index.html (#touch-controls), kiểu dáng trong style.css.
+// Điều khiển cảm ứng (thiết kế cho điện thoại xoay ngang): MỘT cần di chuyển ở nửa trái,
+// bên phải là nút tròn lớn "hành động" (giữ để đánh/bắn — game tự quay về mục tiêu gần nhất) và các nút nhỏ.
+// Dùng Pointer Events theo từng pointerId nên nhiều ngón cùng lúc; đẩy dữ liệu vào input.js. DOM ở index.html.
 
 import { INPUT, TOUCH_SIZE_SCALES } from '../config.js';
 
@@ -101,6 +101,36 @@ function bindActionButtons(container, input) {
 }
 
 /**
+ * Nút hành động chính: giữ là "đang bấm" (đánh/bắn liên tục), nhả là thôi.
+ * Bắt pointer để ngón tay trượt ra ngoài nút vẫn tính là đang giữ cho tới khi nhấc tay.
+ */
+function bindHoldButton(button, onChange) {
+  let activePointerId = null;
+  const release = (event) => {
+    if (event.pointerId !== activePointerId) return;
+    activePointerId = null;
+    button.classList.remove('is-pressed');
+    onChange(false);
+  };
+  button.addEventListener('pointerdown', (event) => {
+    event.preventDefault();
+    if (activePointerId !== null) return;
+    activePointerId = event.pointerId;
+    button.setPointerCapture(event.pointerId);
+    button.classList.add('is-pressed');
+    onChange(true);
+  });
+  button.addEventListener('pointerup', release);
+  button.addEventListener('pointercancel', release);
+  button.addEventListener('lostpointercapture', release);
+  return () => {
+    activePointerId = null;
+    button.classList.remove('is-pressed');
+    onChange(false);
+  };
+}
+
+/**
  * Chặn cuộn trang, kéo-để-tải-lại và phóng to bằng hai ngón.
  * Vẫn cho phép cuộn bên trong khung menu / bảng chế tạo khi màn hình quá thấp.
  */
@@ -131,25 +161,37 @@ export function setupTouchControls(input) {
     getRadius,
     (x, y) => input.setTouchMove(x, y),
   );
-  const aimStick = createFloatingStick(
-    rootElement.querySelector('[data-stick="aim"]'),
-    getRadius,
-    (x, y, isActive) => input.setTouchAim(x, y, isActive),
-  );
+  const primaryButton = rootElement.querySelector('[data-hold-action="primary"]');
+  const releasePrimary = bindHoldButton(primaryButton, (isHeld) => input.setTouchPrimary(isHeld));
   bindActionButtons(rootElement, input);
   const interactButton = rootElement.querySelector('[data-game-action="interact"]');
+  const reloadButton = rootElement.querySelector('[data-game-action="reload"]');
+
+  const setText = (element, text) => {
+    if (element.textContent !== text) element.textContent = text;
+  };
 
   return {
-    /** Đổi chữ trên nút Tương tác theo ngữ cảnh, ví dụ "Đặt" khi đang xây. */
+    /** Đổi chữ trên nút Dùng theo ngữ cảnh, ví dụ "Hái quả", "Cày đất". */
     setInteractLabel(text) {
-      if (interactButton.textContent !== text) interactButton.textContent = text;
+      setText(interactButton, text);
+      interactButton.classList.toggle('is-idle', text === 'Dùng');
+    },
+    /** Chữ trên nút hành động lớn: "Đánh", "Bắn", "Cày", "Gieo", "Ăn"... */
+    setPrimaryLabel(text) {
+      setText(primaryButton, text);
+    },
+    /** Nút Nạp đạn chỉ hiện khi đang cầm súng cho đỡ rối. */
+    setReloadVisible(isVisible) {
+      if (reloadButton.hidden === !isVisible) return;
+      reloadButton.hidden = !isVisible;
     },
     setVisible(isVisible) {
       if (rootElement.hidden === !isVisible) return;
       rootElement.hidden = !isVisible;
       if (!isVisible) {
         moveStick.reset();
-        aimStick.reset();
+        releasePrimary();
       }
     },
     /** Đổi kích thước nút theo Cài đặt (CSS dùng biến --touch-scale). */
