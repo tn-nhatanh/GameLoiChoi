@@ -43,7 +43,8 @@ function buildWorldImage(world) {
   for (let tileIndex = 0; tileIndex < world.tiles.length; tileIndex++) {
     const objectIndex = world.objectIndexByTile[tileIndex];
     const object = objectIndex >= 0 ? world.objects[objectIndex] : null;
-    const rgb = object ? objectRgb[object.type] : tileRgb[world.tiles[tileIndex]];
+    // Cỏ, hoa, nấm... không có màu riêng → hiện màu đất bên dưới.
+    const rgb = (object && objectRgb[object.type]) || tileRgb[world.tiles[tileIndex]];
     const pixelOffset = tileIndex * 4;
     pixels.data[pixelOffset] = rgb[0];
     pixels.data[pixelOffset + 1] = rgb[1];
