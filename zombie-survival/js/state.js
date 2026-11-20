@@ -3,7 +3,7 @@
 // Cũng chứa việc tạo bản lưu (snapshot) và khôi phục phiên chơi từ bản lưu (utils/storage.js ghi xuống localStorage).
 
 import { SAVE, ANIMAL_SPAWN, PLAYER, SURVIVAL, STRUCTURES, HARVEST } from './config.js';
-import { loadSettings, loadBestNights } from './utils/storage.js';
+import { loadSettings, loadBestNights, createWorldId } from './utils/storage.js';
 import { hashStringToSeed, clamp } from './utils/math.js';
 import { createPlayer } from './entities/player.js';
 import { createBulletPool } from './entities/bullet.js';
@@ -11,7 +11,7 @@ import { spawnInitialAnimals } from './entities/animal.js';
 import { generateWorld, isInsideMap } from './world/mapGen.js';
 import { createCamera } from './world/camera.js';
 import { createInventory, addItem, serializeInventory, deserializeInventory } from './systems/inventory.js';
-import { createDayNightState, isNight } from './systems/dayNight.js';
+import { createDayNightState, isNight, getDayNumber } from './systems/dayNight.js';
 import { createFlowField } from './systems/pathfinding.js';
 import { addStructure } from './systems/building.js';
 import { applySavedResourceState } from './systems/gathering.js';
@@ -24,6 +24,7 @@ export const SCREENS = Object.freeze({
   PLAYING: 'playing',
   PAUSED: 'paused',
   GAME_OVER: 'gameOver',
+  WORLDS: 'worlds', // danh sách thế giới đã lưu
 });
 
 export function createAppState() {
@@ -35,6 +36,7 @@ export function createAppState() {
     reducedMotion: false, // main.js đồng bộ với prefers-reduced-motion
     game: null, // phiên chơi hiện tại, null khi chưa chơi
     lastResult: null, // { nightsSurvived, bestNights, zombiesKilled, seedText } cho màn Game Over
+    lastSavedAt: null, // thời điểm tự lưu gần nhất (ms), hiện ở màn tạm dừng
     screenListeners: [],
   };
 }
@@ -58,10 +60,11 @@ export function isPlaying(appState) {
 // ---------- Phiên chơi ----------
 
 /** Khung phiên chơi: sinh đảo theo seed, đặt người chơi ở điểm xuất phát, các danh sách rỗng. */
-function createGameSession(seedText) {
+function createGameSession(seedText, worldId) {
   const seedNumber = hashStringToSeed(seedText);
   const world = generateWorld(seedNumber);
   return {
+    worldId, // mỗi lần chơi một đảo là một "thế giới" riêng, có bản lưu riêng (cùng seed vẫn khác ID)
     seedText,
     seedNumber,
     elapsedSeconds: 0,
@@ -89,7 +92,7 @@ function createGameSession(seedText) {
 }
 
 export function startNewGameSession(seedText) {
-  const game = createGameSession(seedText);
+  const game = createGameSession(seedText, createWorldId());
   for (const { itemId, count } of PLAYER.startingItems) addItem(game.inventory, itemId, count);
   spawnInitialAnimals(game);
   return game;
@@ -105,6 +108,8 @@ export function createSaveSnapshot(game) {
     .map((object) => [object.id, object.health, object.isDepleted ? 1 : 0, Math.round(object.regrowTimer)]);
   return {
     version: SAVE.version,
+    worldId: game.worldId,
+    dayNumber: getDayNumber(dayNight), // để hiện trong danh sách thế giới
     seedText: game.seedText,
     elapsedSeconds: game.elapsedSeconds,
     nightsSurvived: game.nightsSurvived,
@@ -161,7 +166,7 @@ function restoreObjects(game, savedObjects) {
 export function restoreGameSession(snapshot) {
   if (!snapshot || snapshot.version !== SAVE.version || typeof snapshot.seedText !== 'string') return null;
   try {
-    const game = createGameSession(snapshot.seedText);
+    const game = createGameSession(snapshot.seedText, snapshot.worldId ?? createWorldId());
     game.elapsedSeconds = snapshot.elapsedSeconds;
     game.nightsSurvived = snapshot.nightsSurvived;
     game.zombiesKilled = snapshot.zombiesKilled ?? 0;

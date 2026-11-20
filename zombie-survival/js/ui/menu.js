@@ -1,14 +1,24 @@
-// Các màn menu dạng DOM: menu chính, tạo game (nhập seed), cách chơi, cài đặt, tạm dừng, game over.
-// Chỉ hiển thị theo appState.screen (state.js); các việc như bắt đầu chơi thì gọi callbacks do main.js cung cấp.
-// Phần HTML nằm trong index.html (các <section data-screen="...">).
+// Các màn menu dạng DOM: menu chính, tạo game (nhập seed), danh sách thế giới đã lưu, cách chơi, cài đặt, tạm dừng, game over.
+// Chỉ hiển thị theo appState.screen (state.js); các việc như bắt đầu chơi / tải thế giới thì gọi callbacks do main.js cung cấp.
+// Phần HTML nằm trong index.html (các <section data-screen="...">); danh sách thế giới đọc từ utils/storage.js.
 
 import { SCREENS, changeScreen, onScreenChange } from '../state.js';
 import { SEED } from '../config.js';
-import { hasSavedGame, saveSettings } from '../utils/storage.js';
+import { listSavedWorlds, saveSettings } from '../utils/storage.js';
 import { randomInt } from '../utils/math.js';
+
+const SAVED_TIME_FORMAT = { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' };
 
 function createRandomSeedText() {
   return String(randomInt(Math.random, 1, SEED.maxRandomSeed));
+}
+
+function formatSavedTime(timestamp) {
+  try {
+    return new Date(timestamp).toLocaleString('vi-VN', SAVED_TIME_FORMAT);
+  } catch {
+    return '';
+  }
 }
 
 function showOnlyScreen(menuLayer, screenName) {
@@ -28,17 +38,108 @@ function focusFirstButton(menuLayer, screenName) {
   target?.focus({ preventScroll: true });
 }
 
-function refreshDynamicTexts(appState) {
-  document.getElementById('continue-button').hidden = !hasSavedGame();
+/** Nút "Tiếp tục" (thế giới chơi gần nhất) và nút "Thế giới đã lưu" chỉ hiện khi có bản lưu. */
+function refreshMainMenu(appState, savedWorlds) {
+  const continueButton = document.getElementById('continue-button');
+  const worldsButton = document.getElementById('worlds-button');
+  const latest = savedWorlds[0];
+  continueButton.hidden = !latest;
+  worldsButton.hidden = savedWorlds.length === 0;
+  if (latest) continueButton.textContent = `Tiếp tục · Đảo ${latest.seedText}`;
+  worldsButton.textContent = `Thế giới đã lưu (${savedWorlds.length})`;
   document.getElementById('best-nights-label').textContent = `Kỷ lục: ${appState.bestNights} đêm`;
-  document.getElementById('pause-seed').textContent = appState.game ? `Seed đảo: ${appState.game.seedText}` : '';
-  if (appState.lastResult) {
-    const result = appState.lastResult;
-    document.getElementById('result-nights').textContent = String(result.nightsSurvived);
-    document.getElementById('result-best').textContent = String(result.bestNights);
-    document.getElementById('result-kills').textContent = `Đã hạ ${result.zombiesKilled} zombie · Đảo ${result.seedText}`;
-  }
 }
+
+function refreshPauseScreen(appState) {
+  const game = appState.game;
+  document.getElementById('pause-seed').textContent = game ? `Đảo ${game.seedText} · đã sống sót ${game.nightsSurvived} đêm` : '';
+  document.getElementById('pause-saved').textContent = appState.lastSavedAt
+    ? `Đã tự lưu lúc ${formatSavedTime(appState.lastSavedAt)}`
+    : '';
+}
+
+function refreshGameOver(appState) {
+  const result = appState.lastResult;
+  if (!result) return;
+  document.getElementById('result-nights').textContent = String(result.nightsSurvived);
+  document.getElementById('result-best').textContent = String(result.bestNights);
+  document.getElementById('result-kills').textContent = `Đã hạ ${result.zombiesKilled} zombie · Đảo ${result.seedText}`;
+}
+
+// ---------- Danh sách thế giới ----------
+
+/** Tạo một dòng thế giới bằng DOM (textContent) — seed do người chơi tự gõ nên không chèn thẳng vào HTML. */
+function createWorldRow(world) {
+  const row = document.createElement('li');
+  row.className = 'world-row';
+
+  const info = document.createElement('div');
+  info.className = 'world-info';
+  const title = document.createElement('span');
+  title.className = 'world-title';
+  title.textContent = `Đảo ${world.seedText}`;
+  const meta = document.createElement('span');
+  meta.className = 'muted-text world-meta';
+  meta.textContent = `Ngày ${world.dayNumber} · sống sót ${world.nightsSurvived} đêm · ${formatSavedTime(world.savedAt)}`;
+  info.append(title, meta);
+
+  const playButton = document.createElement('button');
+  playButton.type = 'button';
+  playButton.className = 'craft-button';
+  playButton.dataset.worldPlay = world.id;
+  playButton.textContent = 'Chơi';
+  playButton.setAttribute('aria-label', `Chơi tiếp đảo ${world.seedText}`);
+
+  const deleteButton = document.createElement('button');
+  deleteButton.type = 'button';
+  deleteButton.className = 'world-delete-button';
+  deleteButton.dataset.worldDelete = world.id;
+  deleteButton.textContent = 'Xoá';
+  deleteButton.setAttribute('aria-label', `Xoá đảo ${world.seedText}`);
+
+  row.append(info, playButton, deleteButton);
+  return row;
+}
+
+function renderWorldList(savedWorlds) {
+  const list = document.getElementById('world-list');
+  list.replaceChildren(...savedWorlds.map(createWorldRow));
+  document.getElementById('world-list-empty').hidden = savedWorlds.length > 0;
+}
+
+/**
+ * Bấm "Xoá" lần đầu chỉ hỏi lại ("Xoá thật?"), bấm lần nữa mới xoá — tránh lỡ tay mất thế giới.
+ * Trả về true nếu đã xoá.
+ */
+function handleDeleteClick(button, onDeleteWorld) {
+  if (button.dataset.confirming !== 'true') {
+    button.dataset.confirming = 'true';
+    button.textContent = 'Xoá thật?';
+    button.classList.add('is-confirming');
+    return false;
+  }
+  onDeleteWorld(button.dataset.worldDelete);
+  return true;
+}
+
+function bindWorldList(appState, callbacks) {
+  document.getElementById('world-list').addEventListener('click', (event) => {
+    const target = event.target instanceof Element ? event.target : null;
+    const playButton = target?.closest('[data-world-play]');
+    if (playButton) {
+      callbacks.onLoadWorld(playButton.dataset.worldPlay);
+      return;
+    }
+    const deleteButton = target?.closest('[data-world-delete]');
+    if (!deleteButton || !handleDeleteClick(deleteButton, callbacks.onDeleteWorld)) return;
+    const savedWorlds = listSavedWorlds();
+    renderWorldList(savedWorlds);
+    refreshMainMenu(appState, savedWorlds);
+    if (savedWorlds.length === 0) changeScreen(appState, SCREENS.MAIN_MENU);
+  });
+}
+
+// ---------- Cài đặt ----------
 
 /** Gắn form Cài đặt với appState.settings, lưu ngay khi người chơi thay đổi. */
 function bindSettingsForm(appState, onSettingsChange) {
@@ -66,13 +167,14 @@ function bindSettingsForm(appState, onSettingsChange) {
 }
 
 /**
- * callbacks = { onStartGame(seedText), onContinue(), onPause(), onResume(),
- *               onQuitToMenu(), onPlayAgain(), onSettingsChange(settings) }
+ * callbacks = { onStartGame(seedText), onContinue(), onLoadWorld(worldId), onDeleteWorld(worldId),
+ *               onPause(), onResume(), onQuitToMenu(), onPlayAgain(), onSettingsChange(settings) }
  */
 export function setupMenus(appState, callbacks) {
   const menuLayer = document.getElementById('menu-layer');
   const seedInput = document.getElementById('seed-input');
   const fillSettingsForm = bindSettingsForm(appState, callbacks.onSettingsChange);
+  bindWorldList(appState, callbacks);
 
   const fillRandomSeed = () => {
     seedInput.value = createRandomSeedText();
@@ -90,6 +192,7 @@ export function setupMenus(appState, callbacks) {
       changeScreen(appState, SCREENS.NEW_GAME);
     },
     continue: callbacks.onContinue,
+    worlds: () => changeScreen(appState, SCREENS.WORLDS),
     howToPlay: () => openSubScreen(SCREENS.HOW_TO_PLAY),
     settings: () => openSubScreen(SCREENS.SETTINGS),
     back: () => changeScreen(appState, appState.returnScreen),
@@ -113,7 +216,11 @@ export function setupMenus(appState, callbacks) {
   });
 
   function renderScreen(screenName) {
-    refreshDynamicTexts(appState);
+    const savedWorlds = listSavedWorlds();
+    refreshMainMenu(appState, savedWorlds);
+    refreshPauseScreen(appState);
+    refreshGameOver(appState);
+    if (screenName === SCREENS.WORLDS) renderWorldList(savedWorlds);
     if (screenName === SCREENS.SETTINGS) fillSettingsForm();
     showOnlyScreen(menuLayer, screenName);
     focusFirstButton(menuLayer, screenName);

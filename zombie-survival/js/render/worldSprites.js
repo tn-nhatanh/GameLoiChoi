@@ -238,7 +238,26 @@ function drawBedShape(ctx) {
   fillRoundedRect(ctx, 6, 21, 36, 5, 2.5, COLORS.backpackOutline);
 }
 
+/** Bàn chế tạo: mặt bàn gỗ bo tròn, bốn chân, trên bàn có búa nhỏ và vài viên đá. */
+function drawWorkbenchShape(ctx) {
+  for (const legX of [6, 36]) {
+    fillRoundedRect(ctx, legX, 26, 6, 18, 3, COLORS.plankShade);
+  }
+  fillRoundedRect(ctx, 2, 10, 44, 22, 8, COLORS.plankShade); // cạnh bàn (tạo độ dày)
+  fillRoundedRect(ctx, 2, 4, 44, 22, 8, COLORS.plankTop); // mặt bàn
+  for (const lineY of [11, 18]) fillRoundedRect(ctx, 6, lineY, 36, 1.6, 0.8, COLORS.plank);
+  ctx.save();
+  ctx.translate(16, 14);
+  ctx.rotate(-0.5);
+  fillRoundedRect(ctx, -1.8, -2, 3.6, 14, 1.8, COLORS.toolHandle); // cán búa
+  fillRoundedRect(ctx, -6, -5, 12, 5, 2.5, COLORS.tool); // đầu búa
+  ctx.restore();
+  fillCircle(ctx, 33, 13, 3.2, COLORS.rock);
+  fillCircle(ctx, 38, 16, 2.4, COLORS.rockShade);
+}
+
 const STRUCTURE_SHAPES = {
+  workbench: drawWorkbenchShape,
   wall: (ctx) => drawWallShape(ctx, COLORS.plank),
   door: drawDoorShape,
   fence: drawFenceShape,

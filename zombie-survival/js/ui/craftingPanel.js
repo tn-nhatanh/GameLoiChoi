@@ -1,9 +1,10 @@
-// Bảng "Túi đồ & Chế tạo": danh sách công thức (đủ nguyên liệu thì bấm được) và lưới túi đồ
+// Bảng "Túi đồ & Chế tạo": danh sách công thức (đủ nguyên liệu và đứng gần bàn chế tạo nếu cần thì bấm được) và lưới túi đồ
 // (chạm một ô rồi chạm ô khác để đổi chỗ; có nút vứt đồ ra đất). Mở bằng Q / nút "Chế tạo"; thế giới tạm dừng khi mở.
 // Chỉ hiển thị và gọi callbacks; việc thật nằm ở systems/crafting.js và systems/inventory.js (qua main.js).
 
 import { RECIPES, ITEMS, INVENTORY } from '../config.js';
-import { countItem, hasItems } from '../systems/inventory.js';
+import { countItem } from '../systems/inventory.js';
+import { canCraft, hasRequiredStation } from '../systems/crafting.js';
 import { getItemIconUrl } from './itemIcons.js';
 
 function renderCostChips(inventory, cost) {
@@ -17,17 +18,24 @@ function renderCostChips(inventory, cost) {
     .join('');
 }
 
-function renderRecipeRow(inventory, recipe) {
+/** Chip báo công thức cần trạm chế tạo mà người chơi chưa đứng gần. */
+function renderStationChip(game, recipe) {
+  if (!recipe.station || hasRequiredStation(game, recipe)) return '';
+  return `<span class="cost-chip station-chip">
+    <img src="${getItemIconUrl(recipe.station)}" alt="">Cần ${ITEMS[recipe.station].name}</span>`;
+}
+
+function renderRecipeRow(game, recipe) {
   const resultName = ITEMS[recipe.result].name;
   const countText = recipe.count > 1 ? ` ×${recipe.count}` : '';
-  const isAffordable = hasItems(inventory, recipe.cost);
-  return `<li class="recipe-row${isAffordable ? '' : ' is-locked'}">
+  const isCraftable = canCraft(game, recipe);
+  return `<li class="recipe-row${isCraftable ? '' : ' is-locked'}">
     <img class="recipe-icon" src="${getItemIconUrl(recipe.result)}" alt="">
     <div class="recipe-info">
       <span class="recipe-name">${resultName}${countText}</span>
-      <span class="recipe-cost">${renderCostChips(inventory, recipe.cost)}</span>
+      <span class="recipe-cost">${renderStationChip(game, recipe)}${renderCostChips(game.inventory, recipe.cost)}</span>
     </div>
-    <button class="craft-button" type="button" data-recipe="${recipe.id}" ${isAffordable ? '' : 'disabled'}
+    <button class="craft-button" type="button" data-recipe="${recipe.id}" ${isCraftable ? '' : 'disabled'}
       aria-label="Chế tạo ${resultName}">Làm</button>
   </li>`;
 }
@@ -56,7 +64,7 @@ export function setupCraftingPanel(callbacks) {
   function render() {
     if (!currentGame) return;
     const inventory = currentGame.inventory;
-    recipeList.innerHTML = RECIPES.map((recipe) => renderRecipeRow(inventory, recipe)).join('');
+    recipeList.innerHTML = RECIPES.map((recipe) => renderRecipeRow(currentGame, recipe)).join('');
     inventoryGrid.innerHTML = inventory.slots.map((slot, index) => renderInventorySlot(slot, index, selectedIndex)).join('');
     const selectedSlot = selectedIndex >= 0 ? inventory.slots[selectedIndex] : null;
     dropButton.disabled = !selectedSlot;

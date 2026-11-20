@@ -117,6 +117,7 @@
           <div class="button-stack">
             <button class="menu-button menu-button--primary" type="button" data-menu="newGame">Chơi mới</button>
             <button id="continue-button" class="menu-button" type="button" data-menu="continue" hidden>Tiếp tục</button>
+            <button id="worlds-button" class="menu-button" type="button" data-menu="worlds" hidden>Thế giới đã lưu</button>
             <button class="menu-button" type="button" data-menu="howToPlay">Cách chơi</button>
             <button class="menu-button" type="button" data-menu="settings">Cài đặt</button>
           </div>
@@ -151,6 +152,17 @@
         </form>
       </section>
 
+      <!-- Thế giới đã lưu: chơi lại các đảo đã chơi dở -->
+      <section class="menu-screen" data-screen="worlds" aria-labelledby="title-worlds" hidden>
+        <div class="menu-card menu-card--wide">
+          <h2 id="title-worlds" class="screen-title">Thế giới đã lưu</h2>
+          <p class="muted-text">Game tự lưu khi tạm dừng, khi thoát và mỗi 20 giây. Chọn một đảo để chơi tiếp.</p>
+          <ul id="world-list" class="world-list"></ul>
+          <p id="world-list-empty" class="muted-text" hidden>Chưa có thế giới nào được lưu.</p>
+          <button class="menu-button" type="button" data-menu="mainMenu">Quay lại</button>
+        </div>
+      </section>
+
       <!-- Cách chơi -->
       <section class="menu-screen" data-screen="howToPlay" aria-labelledby="title-help" hidden>
         <div class="menu-card menu-card--wide">
@@ -164,7 +176,7 @@
             <ul class="key-list">
               <li><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> Di chuyển · <kbd>Shift</kbd> Chạy</li>
               <li><kbd>Chuột trái</kbd> Vung rìu / bắn / đặt công trình (tuỳ món đang cầm)</li>
-              <li><kbd>E</kbd> Tương tác: chặt cây, hái quả, nướng thịt, sửa, ngủ</li>
+              <li><kbd>E</kbd> Tương tác: chặt cây, hái quả, nướng thịt, sửa, ngủ, dùng bàn chế tạo</li>
               <li><kbd>Q</kbd> Túi đồ &amp; chế tạo · <kbd>B</kbd> Chọn công trình để xây</li>
               <li><kbd>R</kbd> Nạp đạn · <kbd>1</kbd>–<kbd>9</kbd> hoặc lăn chuột: chọn ô nhanh</li>
               <li><kbd>Esc</kbd> hoặc <kbd>P</kbd> Tạm dừng</li>
@@ -177,6 +189,7 @@
             </ul>
             <h3>Mẹo sinh tồn</h3>
             <ul class="key-list">
+              <li>Tay không chỉ làm được rìu, cuốc, đống lửa, hàng rào và <b>bàn chế tạo</b>. Đặt bàn xuống rồi đứng cạnh nó để làm tường, cửa, bẫy, giường, súng, đạn.</li>
               <li>Đói thì mất máu dần. Thịt nướng ở đống lửa hồi nhiều hơn thịt sống.</li>
               <li>Ban đêm ở xa đống lửa sẽ lạnh và đói nhanh hơn; ngồi cạnh lửa thì hồi máu.</li>
               <li>Zombie đi vòng qua tường, nhưng nếu bị rào kín chúng sẽ đập chỗ yếu nhất. Dùng gỗ để sửa!</li>
@@ -216,6 +229,7 @@
         <div class="menu-card">
           <h2 id="title-paused" class="screen-title">Tạm nghỉ chút</h2>
           <p id="pause-seed" class="muted-text"></p>
+          <p id="pause-saved" class="saved-badge"></p>
           <div class="button-stack">
             <button class="menu-button menu-button--primary" type="button" data-menu="resume">Chơi tiếp</button>
             <button class="menu-button" type="button" data-menu="howToPlay">Cách chơi</button>

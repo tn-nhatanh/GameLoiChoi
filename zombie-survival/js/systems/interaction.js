@@ -1,6 +1,7 @@
 // Điều phối hai nút hành động của người chơi:
 //  - Hành động chính (chuột trái / cần ngắm): tuỳ món đang cầm — bắn súng, vung rìu/cuốc/tay, ăn, đặt công trình.
-//  - Tương tác (E / nút "Dùng"): tuỳ thứ ở gần — đặt công trình, ngủ, nướng thịt, hái quả, sửa, chặt cây, ăn.
+//  - Tương tác (E / nút "Dùng"): tuỳ thứ ở gần — đặt công trình, ngủ, nướng thịt, hái quả, sửa, chặt cây,
+//    mở bàn chế tạo, ăn.
 // findInteraction() cũng được HUD dùng để hiện gợi ý "E: Hái quả". Gọi các system khác để làm việc thật.
 
 import { PLAYER, ITEMS } from '../config.js';
@@ -24,6 +25,7 @@ export const INTERACTION = Object.freeze({
   PICK_BERRIES: 'pickBerries',
   REPAIR: 'repair',
   HARVEST: 'harvest',
+  OPEN_CRAFTING: 'openCrafting',
   EAT: 'eat',
 });
 
@@ -86,6 +88,8 @@ export function findInteraction(game, out) {
   if (resource) {
     return setInteraction(out, INTERACTION.HARVEST, resource, resource.type === 'tree' ? 'Chặt cây' : 'Đập đá');
   }
+  const workbench = findNearbyStructure(game, (structure) => structure.structureType === 'workbench');
+  if (workbench) return setInteraction(out, INTERACTION.OPEN_CRAFTING, workbench, 'Dùng bàn chế tạo');
   if (bed) return setInteraction(out, INTERACTION.SET_SPAWN, bed, 'Đặt điểm hồi sinh');
 
   const selectedItemId = getSelectedItemId(game);
@@ -121,6 +125,7 @@ export function performInteraction(game, interaction) {
   else if (kind === INTERACTION.PICK_BERRIES) pickBerries(game, target);
   else if (kind === INTERACTION.REPAIR) repairStructure(game, target);
   else if (kind === INTERACTION.HARVEST) swingAtResource(game, target);
+  else if (kind === INTERACTION.OPEN_CRAFTING) emit(game, 'openCrafting', {});
   else if (kind === INTERACTION.EAT) eatFromSlot(game, game.player.selectedSlot);
 }
 

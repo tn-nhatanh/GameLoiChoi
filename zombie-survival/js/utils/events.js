@@ -10,6 +10,7 @@
  *   shake        { strength }                — rung màn hình
  *   toast        { text }                    — thông báo nhỏ trên HUD
  *   playerHurt   {}                          — nháy viền hồng
+ *   openCrafting {}                          — mở bảng chế tạo (khi tương tác với bàn chế tạo)
  */
 export function emit(game, type, data) {
   game.events.push({ type, ...data });

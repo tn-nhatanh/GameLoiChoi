@@ -472,6 +472,77 @@ kbd {
   outline: 3px solid var(--focus-ring);
 }
 
+/* Thế giới đã lưu */
+.world-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  text-align: left;
+}
+
+.world-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 20px;
+  background: var(--kbd-bg);
+}
+
+.world-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.world-title {
+  font-weight: 900;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.world-meta {
+  font-size: 0.85rem;
+}
+
+.world-delete-button {
+  min-width: 56px;
+  min-height: 48px;
+  padding: 0 12px;
+  border: 2px solid var(--button-border);
+  border-radius: var(--radius-pill);
+  background: var(--button-bg);
+  color: var(--text-muted);
+  font-weight: 800;
+}
+
+.world-delete-button.is-confirming {
+  border-color: var(--missing-text);
+  background: var(--missing-bg);
+  color: var(--missing-text);
+}
+
+.saved-badge {
+  align-self: center;
+  margin: -4px 0 0;
+  padding: 3px 12px;
+  border-radius: var(--radius-pill);
+  background: var(--kbd-bg);
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.saved-badge:empty {
+  display: none;
+}
+
 /* Game over */
 .result-row {
   display: flex;
@@ -924,6 +995,11 @@ body.is-touch .slot-key {
 .cost-chip img {
   width: 20px;
   height: 20px;
+}
+
+.cost-chip.station-chip {
+  background: #e3ddf7;
+  color: #5b4d8f;
 }
 
 .cost-chip.is-missing {

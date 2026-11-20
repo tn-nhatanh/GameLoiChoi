@@ -45,7 +45,7 @@ import { createMinimap } from './ui/minimap.js';
 import { setupCraftingPanel } from './ui/craftingPanel.js';
 import { setupTouchControls, preventPageGestures } from './ui/touchControls.js';
 import { createAudio } from './utils/audio.js';
-import { loadGame, saveGame, clearSavedGame, saveBestNights } from './utils/storage.js';
+import { listSavedWorlds, loadWorld, saveWorld, deleteWorld, saveBestNights } from './utils/storage.js';
 import { drainEvents } from './utils/events.js';
 import { clamp } from './utils/math.js';
 
@@ -87,9 +87,12 @@ function syncOverlays(app) {
 // Phiên chơi: bắt đầu, lưu, kết thúc
 // =====================================================================
 
+/** Lưu thế giới đang chơi vào ô lưu riêng của nó (theo game.worldId). */
 function saveCurrentGame(app) {
   const game = app.state.game;
-  if (game && !game.player.isDead) saveGame(createSaveSnapshot(game));
+  if (!game || game.player.isDead) return;
+  const savedAt = saveWorld(createSaveSnapshot(game));
+  if (savedAt) app.state.lastSavedAt = savedAt;
 }
 
 function startSession(app, game) {
@@ -111,15 +114,16 @@ function startNewGame(app, seedText) {
   app.hud.showToast(`Đảo ${seedText} · Lại gần cây và ${tip} để chặt gỗ!`);
 }
 
-function continueSavedGame(app) {
-  const game = restoreGameSession(loadGame());
+/** Vào lại một thế giới đã lưu; không truyền worldId thì lấy thế giới chơi gần nhất. */
+function continueSavedWorld(app, worldId = listSavedWorlds()[0]?.id) {
+  const game = worldId ? restoreGameSession(loadWorld(worldId)) : null;
   if (!game) {
-    clearSavedGame();
+    if (worldId) deleteWorld(worldId); // bản lưu hỏng thì bỏ đi
     changeScreen(app.state, SCREENS.MAIN_MENU);
     return;
   }
   startSession(app, game);
-  app.hud.showToast(`Chào mừng trở lại! Đã sống sót ${game.nightsSurvived} đêm.`);
+  app.hud.showToast(`Chào mừng trở lại đảo ${game.seedText}! Đã sống sót ${game.nightsSurvived} đêm.`);
 }
 
 function endGame(app) {
@@ -127,7 +131,7 @@ function endGame(app) {
   const appState = app.state;
   appState.bestNights = Math.max(appState.bestNights, game.nightsSurvived);
   saveBestNights(appState.bestNights);
-  clearSavedGame();
+  deleteWorld(game.worldId); // chết là hết: thế giới này không chơi tiếp được (vẫn có thể chơi lại đảo cùng seed)
   appState.lastResult = {
     nightsSurvived: game.nightsSurvived,
     bestNights: appState.bestNights,
@@ -168,7 +172,9 @@ function dropSlotOnGround(app, slotIndex) {
 function createMenuCallbacks(app) {
   return {
     onStartGame: (seedText) => startNewGame(app, seedText),
-    onContinue: () => continueSavedGame(app),
+    onContinue: () => continueSavedWorld(app),
+    onLoadWorld: (worldId) => continueSavedWorld(app, worldId),
+    onDeleteWorld: (worldId) => deleteWorld(worldId),
     onPause: () => {
       if (!isPlaying(app.state)) return;
       saveCurrentGame(app);
@@ -227,6 +233,7 @@ function handleGameEvent(app, event) {
   else if (event.type === 'shake' && settings.screenShake && !reducedMotion) addShake(app.effects, event.strength);
   else if (event.type === 'toast') app.hud.showToast(event.text);
   else if (event.type === 'playerHurt') app.hud.flashHurt();
+  else if (event.type === 'openCrafting' && !app.craftingPanel.isOpen()) openCraftingPanel(app);
 }
 
 function processGameEvents(app) {

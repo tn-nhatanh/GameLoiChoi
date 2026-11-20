@@ -83,13 +83,16 @@ export const UI = {
 export const SAVE = {
   autosaveSeconds: 20, // tự lưu mỗi 20 giây khi đang chơi
   version: 1, // tăng khi đổi cấu trúc bản lưu
+  maxWorlds: 10, // giữ tối đa 10 thế giới; quá thì xoá thế giới lâu không chơi nhất
 };
 
 /** Khoá localStorage — đổi hậu tố v1 khi cấu trúc dữ liệu lưu thay đổi */
 export const STORAGE_KEYS = {
   settings: 'zombie-survival.settings.v1',
-  save: 'zombie-survival.save.v1',
   bestNights: 'zombie-survival.best.v1',
+  worldIndex: 'zombie-survival.worlds.v1', // danh sách thế giới (tóm tắt)
+  worldPrefix: 'zombie-survival.world.v1.', // + ID thế giới → bản lưu đầy đủ
+  legacySave: 'zombie-survival.save.v1', // bản lưu một ô kiểu cũ, tự chuyển sang dạng mới
 };
 
 // =====================================================================
@@ -142,7 +145,8 @@ export const WORLD_OBJECTS = {
 
 /** Thu thập tài nguyên (systems/gathering.js) */
 export const HARVEST = {
-  tree: { maxHealth: 6, dropItem: 'wood', dropMin: 3, dropMax: 5, regrowSeconds: 150 },
+  // Tay không 12 nhát, rìu 4 nhát mới đổ (xem TOOLS.treeDamage)
+  tree: { maxHealth: 12, dropItem: 'wood', dropMin: 4, dropMax: 6, regrowSeconds: 150 },
   rock: { maxHealth: 8, dropItem: 'stone', dropMin: 3, dropMax: 5, regrowSeconds: 200 },
   bush: { dropItem: 'berry', dropMin: 2, dropMax: 3, regrowSeconds: 90 },
   regrowRetrySeconds: 3, // nếu có ai đứng chắn chỗ cây mọc lại thì đợi thêm chừng này
@@ -222,20 +226,30 @@ export const ITEMS = {
   trap: { name: 'Bẫy', stackSize: 10, structure: 'trap' },
   campfire: { name: 'Đống lửa', stackSize: 5, structure: 'campfire' },
   bed: { name: 'Giường', stackSize: 3, structure: 'bed' },
+  workbench: { name: 'Bàn chế tạo', stackSize: 3, structure: 'workbench' },
 };
 
-/** Công thức chế tạo (systems/crafting.js). Thứ tự ở đây là thứ tự hiện trong bảng. */
+/** Trạm chế tạo (systems/crafting.js): công thức có `station` chỉ làm được khi đứng gần trạm đó. */
+export const CRAFTING = {
+  stationRange: 130, // đứng cách bàn chế tạo trong khoảng này (px) mới dùng được
+};
+
+/**
+ * Công thức chế tạo (systems/crafting.js). Thứ tự ở đây là thứ tự hiện trong bảng.
+ * Không có `station` = làm bằng tay ở đâu cũng được; station: 'workbench' = phải đứng gần bàn chế tạo.
+ */
 export const RECIPES = [
   { id: 'axe', result: 'axe', count: 1, cost: { wood: 5, stone: 2 } },
   { id: 'pickaxe', result: 'pickaxe', count: 1, cost: { wood: 5, stone: 3 } },
+  { id: 'workbench', result: 'workbench', count: 1, cost: { wood: 12, stone: 4 } },
   { id: 'campfire', result: 'campfire', count: 1, cost: { wood: 6, stone: 3 } },
-  { id: 'wall', result: 'wall', count: 1, cost: { wood: 6 } },
-  { id: 'door', result: 'door', count: 1, cost: { wood: 8 } },
   { id: 'fence', result: 'fence', count: 2, cost: { wood: 4 } },
-  { id: 'trap', result: 'trap', count: 1, cost: { wood: 4, stone: 4 } },
-  { id: 'bed', result: 'bed', count: 1, cost: { wood: 10, hide: 3 } },
-  { id: 'gun', result: 'gun', count: 1, cost: { wood: 10, stone: 12, hide: 2 } },
-  { id: 'ammo', result: 'ammo', count: 6, cost: { stone: 3, wood: 1 } },
+  { id: 'wall', result: 'wall', count: 1, cost: { wood: 6 }, station: 'workbench' },
+  { id: 'door', result: 'door', count: 1, cost: { wood: 8 }, station: 'workbench' },
+  { id: 'trap', result: 'trap', count: 1, cost: { wood: 4, stone: 4 }, station: 'workbench' },
+  { id: 'bed', result: 'bed', count: 1, cost: { wood: 10, hide: 3 }, station: 'workbench' },
+  { id: 'gun', result: 'gun', count: 1, cost: { wood: 10, stone: 12, hide: 2 }, station: 'workbench' },
+  { id: 'ammo', result: 'ammo', count: 6, cost: { stone: 3, wood: 1 }, station: 'workbench' },
 ];
 
 /** Túi đồ (systems/inventory.js) */
@@ -262,6 +276,7 @@ export const STRUCTURES = {
   trap: { maxHealth: 60, blocks: 'none', trapDamage: 24, trapCooldownSeconds: 0.9, trapWearPerHit: 10 },
   campfire: { maxHealth: 100, blocks: 'all', lightRadius: 210, warmRadius: 140 },
   bed: { maxHealth: 120, blocks: 'none' },
+  workbench: { maxHealth: 150, blocks: 'all' },
 };
 
 /** Xây và sửa */
